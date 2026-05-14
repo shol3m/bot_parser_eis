@@ -236,6 +236,10 @@ def download_document(doc: dict, out_dir: Path) -> Path | None:
     safe_name = "".join(c for c in normalized if c.isascii() and (c.isalnum() or c in " ._-"))[:60].strip(". ")
     if not safe_name:
         safe_name = "document"
+    for known_ext in (".pdf", ".docx", ".doc", ".xlsx", ".xls", ".rtf", ".txt", ".zip", ".rar"):
+        if safe_name.lower().endswith(known_ext):
+            safe_name = safe_name[:-len(known_ext)].strip(". ")
+            break
     filepath = out_dir / f"{safe_name}{ext}"
 
     # Не скачиваем если уже есть

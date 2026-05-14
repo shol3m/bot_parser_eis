@@ -26,3 +26,8 @@ __pycache__/
 # Временные файлы
 *.tmp
 _parser_*.json
+
+# Генерируемые файлы Mini App
+webapp/data.json
+webapp/subs.json
+webapp/config.json

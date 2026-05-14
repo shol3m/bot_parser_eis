@@ -35,12 +35,16 @@ MAX_CHARS = 40_000
 
 
 def extract_text(path: Path) -> str:
-    """Извлекает текст из PDF, DOCX, DOC, TXT."""
+    """Извлекает текст из PDF, DOCX, DOC, RTF, TXT."""
     ext = path.suffix.lower()
     if ext == ".pdf":
         return _extract_pdf(path)
-    if ext in (".docx", ".doc"):
+    if ext == ".docx":
         return _extract_docx(path)
+    if ext == ".doc":
+        return _extract_doc_legacy(path)
+    if ext == ".rtf":
+        return _extract_rtf(path)
     if ext == ".txt":
         return path.read_text(encoding="utf-8", errors="replace")
     return f"[Формат {ext} не поддерживается]"
@@ -64,6 +68,51 @@ def _extract_docx(path: Path) -> str:
         return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
     except ImportError:
         return f"[python-docx не установлен: {path.name}]"
+    except Exception as e:
+        return f"[Ошибка чтения {path.name}: {e}]"
+
+
+def _extract_doc_legacy(path: Path) -> str:
+    """Читает старый бинарный .doc через antiword, с fallback на DOCX (если файл — OOXML)."""
+    antiword = shutil.which("antiword")
+    if antiword:
+        try:
+            result = subprocess.run(
+                [antiword, "-t", "-w", "0", str(path.absolute())],
+                capture_output=True,
+                timeout=30,
+            )
+            text = result.stdout.decode("utf-8", errors="replace").strip()
+            if text:
+                return text
+        except Exception:
+            pass
+
+    # Файл может быть OOXML (переименованный .docx) — пробуем python-docx
+    import zipfile
+    if zipfile.is_zipfile(str(path)):
+        return _extract_docx(path)
+
+    if antiword:
+        return f"[Не удалось прочитать {path.name}]"
+    return f"[antiword не найден, файл не ZIP: {path.name}]"
+
+
+def _extract_rtf(path: Path) -> str:
+    try:
+        from striprtf.striprtf import rtf_to_text
+        raw = path.read_bytes()
+        for enc in ("utf-8", "cp1251", "latin-1"):
+            try:
+                content = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            content = raw.decode("latin-1")
+        return rtf_to_text(content).strip()
+    except ImportError:
+        return f"[striprtf не установлен: {path.name}]"
     except Exception as e:
         return f"[Ошибка чтения {path.name}: {e}]"
 
