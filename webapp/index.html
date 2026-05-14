@@ -483,49 +483,81 @@
       <div class="preset-chips" id="preset-chips"></div>
     </div>
 
-    <!-- Разделитель: клиентские фильтры -->
+    <!-- Параметры нового поиска -->
     <div class="filter-section">
-      <div class="filter-section-title">Фильтр результатов</div>
+      <div class="filter-section-title">Параметры поиска</div>
 
       <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="font-size:13px;color:var(--hint)">Закон</div>
-        <div class="seg-ctrl">
-          <button class="seg-btn active" data-law="all">Все</button>
-          <button class="seg-btn" data-law="44">44‑ФЗ</button>
+        <div class="seg-ctrl" id="law-ctrl">
+          <button class="seg-btn active" data-law="44">44‑ФЗ</button>
           <button class="seg-btn" data-law="223">223‑ФЗ</button>
+          <button class="seg-btn" data-law="both">Оба</button>
+        </div>
+      </div>
+
+      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="font-size:13px;color:var(--hint)">ОКПД2</div>
+        <div class="seg-ctrl" id="okpd-ctrl">
+          <button class="seg-btn active" data-okpd="J">Раздел J (ИТ)</button>
+          <button class="seg-btn" data-okpd="all">Все разделы</button>
+        </div>
+      </div>
+
+      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="font-size:13px;color:var(--hint)">Дата размещения</div>
+        <div class="seg-ctrl" id="date-ctrl">
+          <button class="seg-btn active" data-date="today">Сегодня</button>
+          <button class="seg-btn" data-date="yesterday">Вчера</button>
+          <button class="seg-btn" data-date="week">Неделя</button>
         </div>
       </div>
 
       <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="font-size:13px;color:var(--hint)">Ключевые слова</div>
-        <input class="input-field" id="kw-input" type="text" placeholder="разработка ПО, информационная система">
+        <input class="input-field" id="kw-search" type="text" placeholder="разработка, информационная система">
       </div>
 
       <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="font-size:13px;color:var(--hint)">Начальная цена, ₽</div>
+        <div style="font-size:13px;color:var(--hint)">Цена, ₽</div>
         <div style="display:flex;gap:8px">
-          <input class="input-field" id="price-from" type="number" placeholder="От" style="flex:1;text-align:right">
-          <input class="input-field" id="price-to" type="number" placeholder="До" style="flex:1;text-align:right">
-        </div>
-      </div>
-
-      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="font-size:13px;color:var(--hint)">Минимальный рейтинг</div>
-        <div class="seg-ctrl">
-          <button class="seg-btn active" data-score="0">Все</button>
-          <button class="seg-btn" data-score="4">4+</button>
-          <button class="seg-btn" data-score="6">6+</button>
-          <button class="seg-btn" data-score="8">8+</button>
+          <input class="input-field" id="price-from-search" type="number" placeholder="От" style="flex:1;text-align:right">
+          <input class="input-field" id="price-to-search" type="number" placeholder="До" style="flex:1;text-align:right">
         </div>
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn btn-primary" style="flex:1;padding:14px" id="apply-filters">
-        Применить
-      </button>
-      <button class="btn btn-bot" style="flex:1;padding:14px" id="search-in-bot">
-        🤖 Искать в боте
+    <button class="btn btn-primary" style="width:100%;padding:14px;margin-top:4px;font-size:16px" id="run-search">
+      🔍 Запустить поиск
+    </button>
+
+    <!-- Разделитель: фильтр текущих результатов -->
+    <div style="margin-top:20px">
+      <div class="filter-section-title" style="padding:0 0 8px">Фильтр текущих результатов</div>
+      <div class="filter-section">
+        <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+          <div style="font-size:13px;color:var(--hint)">Ключевые слова</div>
+          <input class="input-field" id="kw-input" type="text" placeholder="поиск по загруженным закупкам">
+        </div>
+        <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+          <div style="font-size:13px;color:var(--hint)">Цена, ₽</div>
+          <div style="display:flex;gap:8px">
+            <input class="input-field" id="price-from" type="number" placeholder="От" style="flex:1;text-align:right">
+            <input class="input-field" id="price-to" type="number" placeholder="До" style="flex:1;text-align:right">
+          </div>
+        </div>
+        <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+          <div style="font-size:13px;color:var(--hint)">Минимальный рейтинг</div>
+          <div class="seg-ctrl">
+            <button class="seg-btn active" data-score="0">Все</button>
+            <button class="seg-btn" data-score="4">4+</button>
+            <button class="seg-btn" data-score="6">6+</button>
+            <button class="seg-btn" data-score="8">8+</button>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-secondary" style="width:100%;padding:12px;margin-top:4px" id="apply-filters">
+        Применить к результатам
       </button>
     </div>
   </div>
@@ -550,10 +582,12 @@ tg.expand();
 document.documentElement.style.setProperty('--accent', tg.themeParams.button_color || '#2481cc');
 
 let allContracts = [];
-let activeLaw = 'all';
-let activeDate = 'today';
+let activeLaw = 'all';    // для фильтра результатов
 let activeSort = 'score';
 let activeMinScore = 0;
+let searchLaw = '44';     // для нового поиска
+let searchOkpd = 'J';
+let searchDate = 'today';
 let botUsername = '';
 let currentUserId = '';
 let botPresets = [];
@@ -567,6 +601,52 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
   });
+});
+
+// ── Контролы нового поиска ─────────────────────────────────────
+document.querySelectorAll('#law-ctrl [data-law]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#law-ctrl [data-law]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    searchLaw = btn.dataset.law;
+  });
+});
+document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    searchOkpd = btn.dataset.okpd;
+  });
+});
+document.querySelectorAll('#date-ctrl [data-date]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#date-ctrl [data-date]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    searchDate = btn.dataset.date;
+  });
+});
+
+// ── Запуск поиска через бот (tg.sendData) ──────────────────────
+document.getElementById('run-search').addEventListener('click', () => {
+  const kw = document.getElementById('kw-search').value.trim();
+  const pf = document.getElementById('price-from-search').value;
+  const pt = document.getElementById('price-to-search').value;
+
+  const payload = {
+    action:     'search',
+    law:        searchLaw,
+    okpd2_section: searchOkpd === 'all' ? null : searchOkpd,
+    date:       searchDate,
+    keywords:   kw,
+    price_from: pf ? parseFloat(pf) : null,
+    price_to:   pt ? parseFloat(pt) : null,
+  };
+
+  try {
+    tg.sendData(JSON.stringify(payload));
+  } catch(e) {
+    tg.showAlert('Функция доступна только внутри Telegram.');
+  }
 });
 
 // ── Сортировка ─────────────────────────────────────────────────
@@ -585,37 +665,13 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
   loadData();
 });
 
-// ── Сегментные контролы ────────────────────────────────────────
-document.querySelectorAll('[data-law]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('[data-law]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeLaw = btn.dataset.law;
-  });
-});
-document.querySelectorAll('[data-date]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('[data-date]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeDate = btn.dataset.date;
-  });
-});
-
+// ── Фильтр результатов: рейтинг ────────────────────────────────
 document.querySelectorAll('[data-score]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('[data-score]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     activeMinScore = parseInt(btn.dataset.score) || 0;
   });
-});
-
-document.getElementById('search-in-bot').addEventListener('click', () => {
-  if (!botUsername) {
-    tg.showAlert('Имя бота неизвестно. Откройте бот вручную.');
-    return;
-  }
-  tg.close();
-  tg.openTelegramLink(`https://t.me/${botUsername}?start=fetch`);
 });
 
 // ── Поиск по тексту ────────────────────────────────────────────
@@ -693,14 +749,16 @@ function renderContracts(contracts, query = '') {
     const comment = (c.quick_comment || '').slice(0, 180);
     const url     = c.url || 'https://zakupki.gov.ru';
     const dbId    = c.id || 0;
-    const datePub = c.date_updated || '';
-    const dateEnd = c.date_end || '';
-    const soon    = isDeadlineSoon(dateEnd);
+    const datePlacement = c.date_placement || '';
+    const dateUpdated   = c.date_updated  || '';
+    const dateEnd       = c.date_end      || '';
+    const soon          = isDeadlineSoon(dateEnd);
 
-    const datesHtml = (datePub || dateEnd) ? `
+    const datesHtml = (datePlacement || dateUpdated || dateEnd) ? `
       <div class="card-dates">
-        ${datePub ? `<span class="date-item">📅 ${escHtml(datePub)}</span>` : ''}
-        ${dateEnd ? `<span class="date-item ${soon ? 'deadline' : ''}">⏳ до ${escHtml(dateEnd)}${soon ? ' !' : ''}</span>` : ''}
+        ${datePlacement ? `<span class="date-item">📋 ${escHtml(datePlacement)}</span>` : ''}
+        ${dateUpdated   ? `<span class="date-item">🔄 ${escHtml(dateUpdated)}</span>`   : ''}
+        ${dateEnd       ? `<span class="date-item ${soon ? 'deadline' : ''}">⏳ до ${escHtml(dateEnd)}${soon ? ' !' : ''}</span>` : ''}
       </div>` : '';
 
     return `<div class="card">

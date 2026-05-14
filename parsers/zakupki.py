@@ -139,11 +139,28 @@ def parse_results(html: str) -> list[dict]:
             if customer_el:
                 item["customer"] = customer_el.text.strip()
 
-            date_blocks = card.select("div.data-block__value")
-            if date_blocks:
-                item["date_updated"] = date_blocks[0].text.strip()
-            if len(date_blocks) > 1:
-                item["date_end"] = date_blocks[1].text.strip()
+            # Разбираем пары заголовок → значение для дат
+            date_map = {}
+            for block in card.select("div.data-block"):
+                title_el = block.select_one(".data-block__title")
+                value_el = block.select_one(".data-block__value")
+                if title_el and value_el:
+                    key = title_el.text.strip().lower()
+                    val = value_el.text.strip()
+                    if "размещ" in key:
+                        date_map["date_placement"] = val
+                    elif "окончан" in key or "подач" in key or "заявк" in key:
+                        date_map["date_end"] = val
+                    elif "обновл" in key or "измен" in key:
+                        date_map["date_updated"] = val
+            # Fallback: если меток нет — берём по позиции
+            if not date_map:
+                date_blocks = card.select("div.data-block__value")
+                if date_blocks:
+                    date_map["date_placement"] = date_blocks[0].text.strip()
+                if len(date_blocks) > 1:
+                    date_map["date_end"] = date_blocks[1].text.strip()
+            item.update(date_map)
 
             if "number" in item or "subject" in item:
                 results.append(item)

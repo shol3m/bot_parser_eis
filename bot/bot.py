@@ -1133,10 +1133,13 @@ async def callback_fetch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE
     future     = context.user_data.get("fetch_future")
     if stop_event is not None or future is not None:
         if stop_event:
-            stop_event.set()   # сигнал парсеру остановиться между страницами
-        if future:
-            future.cancel()    # прекратить ожидание результата
-        await _qanswer(query, "🛑 Останавливаю...")
+            stop_event.set()
+        # Немедленно обновляем сообщение — не ждём завершения потока
+        try:
+            await query.edit_message_text("🛑 Останавливаю... (досбираем текущую страницу)")
+        except (BadRequest, TimedOut, NetworkError):
+            pass
+        await _qanswer(query)
     else:
         await _qanswer(query, "Поиск уже завершён")
 
@@ -1786,16 +1789,29 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await _run_detail_analysis(update, context, contract)
 
     elif action == "search":
+        date_val = data.get("date", "today")
+        # "week" → от 7 дней назад до сегодня
+        if date_val == "week":
+            from datetime import datetime, timedelta
+            date_from = (datetime.now() - timedelta(days=7)).strftime("%d.%m.%Y")
+            date_to   = datetime.now().strftime("%d.%m.%Y")
+        else:
+            date_from = date_to = date_val
+
         filters = {
-            "law":        data.get("law", "44"),
-            "keywords":   [k.strip() for k in data.get("keywords", "").split(",") if k.strip()],
-            "price_from": float(data["price_from"]) if data.get("price_from") else None,
-            "price_to":   float(data["price_to"])   if data.get("price_to")   else None,
-            "date_from":  data.get("date", "today"),
-            "date_to":    data.get("date", "today"),
+            "law":           data.get("law", "44"),
+            "okpd2_section": data.get("okpd2_section") or "J",
+            "keywords":      [k.strip() for k in (data.get("keywords") or "").split(",") if k.strip()],
+            "price_from":    float(data["price_from"]) if data.get("price_from") else None,
+            "price_to":      float(data["price_to"])   if data.get("price_to")   else None,
+            "date_from":     date_from,
+            "date_to":       date_to,
         }
         context.user_data["pending_filter"] = filters
-        await update.message.reply_text("🔍 Фильтры применены. Запускаю поиск…")
+        await update.message.reply_text(
+            f"🔍 Запускаю поиск из приложения…\n{_filter_summary(filters)}",
+            parse_mode=ParseMode.MARKDOWN,
+        )
         await cmd_fetch(update, context)
 
 
@@ -1880,6 +1896,7 @@ def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
                 "price":         c.get("price", ""),
                 "customer":      c.get("customer", ""),
                 "url":           c.get("url", ""),
+                "date_placement": c.get("date_placement", ""),
                 "date_updated":  c.get("date_updated", ""),
                 "date_end":      c.get("date_end", ""),
                 "quick_score":   c.get("quick_score") or 0,
