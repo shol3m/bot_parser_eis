@@ -1,7 +1,23 @@
 {
   "chat_id": 422923134,
   "bot_username": "agent_shol3m_bot",
-  "date": "15.05.2026 00:30",
+  "date": "15.05.2026 00:43",
+  "active_preset": "шаблон",
+  "active_filter": {
+    "keywords": [],
+    "okpd2_key": 8873870,
+    "okpd2_section": "J",
+    "region_codes": [],
+    "price_from": 3000000.0,
+    "price_to": null,
+    "law": "both",
+    "date_from": "today",
+    "date_to": "today"
+  },
+  "presets": [
+    "default",
+    "шаблон"
+  ],
   "contracts": [
     {
       "id": 2473,
@@ -10,6 +26,8 @@
       "price": "9 885 926,88 ₽",
       "customer": "ГОСУДАРСТВЕННОЕ АВТОНОМНОЕ УЧРЕЖДЕНИЕ СВЕРДЛОВСКОЙ ОБЛАСТИ \"ФАРМАЦИЯ\"",
       "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616009125",
+      "date_updated": "14.05.2026",
+      "date_end": "14.05.2026",
       "quick_score": 0,
       "quick_comment": ""
     }
