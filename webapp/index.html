@@ -574,12 +574,21 @@
 </div>
 
 <script>
-const tg = window.Telegram.WebApp;
+// Защита от отсутствия Telegram SDK (при открытии в браузере вне Telegram)
+const tg = window.Telegram?.WebApp ?? {
+  ready: ()=>{}, expand: ()=>{}, close: ()=>{},
+  showAlert: (t)=>alert(t),
+  sendData: ()=>{ alert('Доступно только в Telegram'); },
+  openTelegramLink: (u)=>{ window.open(u, '_blank'); },
+  initDataUnsafe: {},
+  themeParams: {},
+  onEvent: ()=>{},
+};
 tg.ready();
 tg.expand();
 
 // Применяем тему
-document.documentElement.style.setProperty('--accent', tg.themeParams.button_color || '#2481cc');
+document.documentElement.style.setProperty('--accent', tg.themeParams?.button_color || '#2481cc');
 
 let allContracts = [];
 let activeLaw = 'all';    // для фильтра результатов
@@ -938,11 +947,14 @@ function showEmpty() {
   </div>`;
 }
 
-init();
+init().catch(err => {
+  document.getElementById('header-sub').textContent = 'Ошибка загрузки';
+  document.getElementById('results-list').innerHTML =
+    `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Ошибка</div><div class="empty-text">${err.message}</div></div>`;
+});
 
-// Тема меняется динамически
 tg.onEvent('themeChanged', () => {
-  document.documentElement.style.setProperty('--accent', tg.themeParams.button_color || '#2481cc');
+  document.documentElement.style.setProperty('--accent', tg.themeParams?.button_color || '#2481cc');
 });
 </script>
 </body>
