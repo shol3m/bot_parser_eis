@@ -418,6 +418,7 @@ document.documentElement.style.setProperty('--accent', tg.themeParams.button_col
 let allContracts = [];
 let activeLaw = '44';
 let activeDate = 'today';
+let botUsername = '';
 
 // ── Таб-навигация ──────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
@@ -501,7 +502,7 @@ function renderContracts(contracts, query = '') {
       ${comment ? `<div class="card-comment">${escHtml(comment)}</div>` : ''}
       <div class="card-actions">
         ${dbId ? `<button class="btn btn-primary" onclick="analyzeContract(${dbId})">🤖 Анализ</button>` : ''}
-        <a class="btn btn-secondary" href="${url}" target="_blank">🔗 Открыть</a>
+        <a class="btn ${dbId ? 'btn-secondary' : 'btn-primary'}" href="${escHtml(url)}" target="_blank">🔗 Открыть</a>
       </div>
     </div>`;
   }).join('');
@@ -511,9 +512,15 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ── Анализ через бот ───────────────────────────────────────────
+// ── Анализ: открываем бот с командой через deep link ──────────
 function analyzeContract(dbId) {
-  tg.sendData(JSON.stringify({ action: 'analyze', contract_id: dbId }));
+  if (!botUsername) {
+    tg.showAlert('Имя бота неизвестно. Запустите анализ из чата бота.');
+    return;
+  }
+  // Закрываем Mini App и отправляем команду в бот
+  tg.close();
+  tg.openTelegramLink(`https://t.me/${botUsername}?start=analyze_${dbId}`);
 }
 
 // ── Применить фильтры (клиентская фильтрация) ─────────────────
@@ -560,6 +567,15 @@ function renderSubs(subs) {
 
 // ── Инициализация: загружаем данные с сервера ─────────────────
 async function init() {
+  // Загружаем конфиг бота (username для deep links)
+  try {
+    const r = await fetch('./config.json?t=' + Date.now());
+    if (r.ok) {
+      const cfg = await r.json();
+      botUsername = cfg.bot_username || '';
+    }
+  } catch(e) {}
+
   // Загружаем результаты поиска
   try {
     const res = await fetch('./data.json?t=' + Date.now());

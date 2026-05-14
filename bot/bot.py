@@ -50,6 +50,7 @@ from telegram.ext import (
     MessageHandler, ContextTypes, filters as tg_filters,
 )
 WEBAPP_URL: str | None = None  # заполняется при запуске тоннеля
+BOT_USERNAME: str = ""
 WEBAPP_PORT = 8742
 CLOUDFLARED_PATH = Path(__file__).parent.parent / "cloudflared.exe"
 WEBAPP_DIR = Path(__file__).parent.parent / "webapp"
@@ -380,6 +381,21 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Уже разрешённый пользователь
     if _is_allowed(update):
+        # Обработка deep link из Mini App: /start analyze_123
+        args = context.args
+        if args and args[0].startswith("analyze_"):
+            try:
+                contract_id = int(args[0].split("_", 1)[1])
+                contract = get_contract(contract_id)
+                if contract:
+                    await update.message.reply_text(
+                        f"🤖 Запускаю анализ: *{(contract.get('subject') or '')[:80]}*",
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                    await _run_detail_analysis(update, context, contract)
+                    return
+            except (ValueError, IndexError):
+                pass
         await _send_welcome(update)
         return
 
@@ -1782,8 +1798,9 @@ def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
     if not WEBAPP_DIR.exists():
         return
     payload = {
-        "chat_id":   chat_id,
-        "date":      datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "chat_id":      chat_id,
+        "bot_username": BOT_USERNAME,
+        "date":         datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
         "contracts": [
             {
                 "id":            c.get("_db_id") or c.get("id"),
@@ -1943,6 +1960,24 @@ def main():
         )
 
     app = builder.build()
+
+    # Сохраняем username бота для deep links в Mini App
+    async def _post_init(application) -> None:
+        global BOT_USERNAME
+        me = await application.bot.get_me()
+        BOT_USERNAME = me.username or ""
+        if WEBAPP_DIR.exists():
+            try:
+                cfg_file = WEBAPP_DIR / "config.json"
+                cfg_file.write_text(
+                    json.dumps({"bot_username": BOT_USERNAME, "webapp_url": WEBAPP_URL or ""}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
+        print(f"Бот: @{BOT_USERNAME}")
+
+    app.post_init = _post_init
 
     # Восстанавливаем расписание из сохранённого конфига
     sched_time = cfg.get("schedule_time")
