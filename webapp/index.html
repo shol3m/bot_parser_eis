@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Госзакупки</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg:        var(--tg-theme-bg-color, #ffffff);
+      --bg2:       var(--tg-theme-secondary-bg-color, #f1f1f1);
+      --text:      var(--tg-theme-text-color, #000000);
+      --hint:      var(--tg-theme-hint-color, #999999);
+      --link:      var(--tg-theme-link-color, #2481cc);
+      --accent:    var(--tg-theme-button-color, #2481cc);
+      --accent-fg: var(--tg-theme-button-text-color, #ffffff);
+      --divider:   color-mix(in srgb, var(--text) 12%, transparent);
+      --card-bg:   var(--bg);
+      --radius:    12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg2);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.4;
+      min-height: 100vh;
+      padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
+
+    /* ── Шапка ── */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg);
+      border-bottom: 1px solid var(--divider);
+      padding: 10px 16px 10px;
+    }
+    .header-title {
+      font-size: 17px;
+      font-weight: 600;
+      text-align: center;
+      color: var(--text);
+    }
+    .header-sub {
+      font-size: 12px;
+      color: var(--hint);
+      text-align: center;
+      margin-top: 2px;
+    }
+
+    /* ── Таб-бар ── */
+    .tabs {
+      display: flex;
+      background: var(--bg);
+      border-bottom: 1px solid var(--divider);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      flex: 1;
+      min-width: 80px;
+      padding: 10px 12px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--hint);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: color .15s, border-color .15s;
+      user-select: none;
+    }
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── Контент ── */
+    .page { display: none; padding: 12px 12px 0; }
+    .page.active { display: block; }
+
+    /* ── Карточка закупки ── */
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 14px 14px 12px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.07);
+    }
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .score-badge {
+      flex-shrink: 0;
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .score-low    { background: #999; }
+    .score-mid    { background: #f5a623; }
+    .score-high   { background: #27ae60; }
+    .score-best   { background: #e74c3c; }
+
+    .card-subject {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.35;
+      color: var(--text);
+      flex: 1;
+    }
+    .card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      margin-bottom: 8px;
+    }
+    .meta-item {
+      font-size: 13px;
+      color: var(--hint);
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .meta-item strong { color: var(--text); }
+    .card-comment {
+      font-size: 13px;
+      color: var(--hint);
+      line-height: 1.4;
+      margin-bottom: 10px;
+    }
+    .card-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: opacity .15s;
+    }
+    .btn:active { opacity: .7; }
+    .btn-primary { background: var(--accent); color: var(--accent-fg); }
+    .btn-secondary { background: var(--bg2); color: var(--text); }
+
+    /* ── Фильтры ── */
+    .filter-section {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .filter-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--hint);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      padding: 12px 14px 6px;
+    }
+    .filter-row {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      border-top: 1px solid var(--divider);
+      gap: 10px;
+    }
+    .filter-row:first-of-type { border-top: none; }
+    .filter-label { flex: 1; font-size: 15px; color: var(--text); }
+    .filter-value { font-size: 15px; color: var(--hint); }
+    .filter-value.active { color: var(--accent); font-weight: 500; }
+
+    /* Сегментный контрол */
+    .seg-ctrl {
+      display: flex;
+      background: var(--bg2);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .seg-btn {
+      flex: 1;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--hint);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .seg-btn.active {
+      background: var(--bg);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    }
+
+    /* Поле ввода */
+    .input-field {
+      width: 100%;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      background: var(--bg2);
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+    }
+    .input-field::placeholder { color: var(--hint); }
+
+    /* ── Подписки ── */
+    .sub-card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .sub-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .sub-info { flex: 1; }
+    .sub-name { font-size: 15px; font-weight: 600; }
+    .sub-meta { font-size: 13px; color: var(--hint); margin-top: 2px; }
+    .sub-indicator {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .sub-active   { background: #27ae60; }
+    .sub-inactive { background: var(--hint); }
+
+    /* ── Пустые состояния ── */
+    .empty {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--hint);
+    }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-title { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .empty-text { font-size: 14px; line-height: 1.5; }
+
+    /* ── Лоадер ── */
+    .loader-wrap { text-align: center; padding: 60px 24px; }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid var(--divider);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-text { color: var(--hint); font-size: 14px; }
+
+    /* ── Счётчик результатов ── */
+    .results-count {
+      font-size: 13px;
+      color: var(--hint);
+      padding: 4px 0 10px;
+    }
+
+    /* ── Поиск в шапке ── */
+    .search-bar {
+      background: var(--bg2);
+      border-radius: 10px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 12px;
+    }
+    .search-bar input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      font-size: 15px;
+      color: var(--text);
+    }
+    .search-bar input::placeholder { color: var(--hint); }
+    .search-icon { color: var(--hint); font-size: 16px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">Госзакупки</div>
+  <div class="header-sub" id="header-sub">Загрузка...</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="results">Результаты</div>
+  <div class="tab" data-tab="filters">Фильтры</div>
+  <div class="tab" data-tab="subs">Подписки</div>
+</div>
+
+<!-- Страница результатов -->
+<div class="page active" id="tab-results">
+  <div class="search-bar">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="search-input" placeholder="Поиск по предмету…">
+  </div>
+  <div id="results-count" class="results-count"></div>
+  <div id="results-list">
+    <div class="loader-wrap">
+      <div class="spinner"></div>
+      <div class="loader-text">Загрузка закупок…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Страница фильтров -->
+<div class="page" id="tab-filters">
+  <div style="padding: 4px 0 12px">
+
+    <div class="filter-section">
+      <div class="filter-section-title">Закон</div>
+      <div class="filter-row">
+        <div class="seg-ctrl" style="width:100%">
+          <button class="seg-btn active" data-law="44">44‑ФЗ</button>
+          <button class="seg-btn" data-law="223">223‑ФЗ</button>
+          <button class="seg-btn" data-law="both">Оба</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">Ключевые слова</div>
+      <div class="filter-row">
+        <input class="input-field" id="kw-input" type="text" placeholder="разработка ПО, информационная система">
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">Начальная цена, ₽</div>
+      <div class="filter-row">
+        <label class="filter-label" style="font-size:13px;color:var(--hint)">От</label>
+        <input class="input-field" id="price-from" type="number" placeholder="500 000" style="width:140px;text-align:right">
+      </div>
+      <div class="filter-row">
+        <label class="filter-label" style="font-size:13px;color:var(--hint)">До</label>
+        <input class="input-field" id="price-to" type="number" placeholder="без ограничений" style="width:140px;text-align:right">
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">Дата публикации</div>
+      <div class="filter-row">
+        <div class="seg-ctrl" style="width:100%">
+          <button class="seg-btn active" data-date="today">Сегодня</button>
+          <button class="seg-btn" data-date="yesterday">Вчера</button>
+          <button class="seg-btn" data-date="week">Неделя</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" style="width:100%;margin-top:4px;padding:14px" id="apply-filters">
+      🔍 Применить фильтры
+    </button>
+  </div>
+</div>
+
+<!-- Страница подписок -->
+<div class="page" id="tab-subs">
+  <div id="subs-list" style="padding-top:4px">
+    <div class="loader-wrap">
+      <div class="spinner"></div>
+      <div class="loader-text">Загрузка подписок…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+// Применяем тему
+document.documentElement.style.setProperty('--accent', tg.themeParams.button_color || '#2481cc');
+
+let allContracts = [];
+let activeLaw = '44';
+let activeDate = 'today';
+
+// ── Таб-навигация ──────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab, .page').forEach(el => el.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Сегментные контролы ────────────────────────────────────────
+document.querySelectorAll('[data-law]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-law]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeLaw = btn.dataset.law;
+  });
+});
+document.querySelectorAll('[data-date]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-date]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeDate = btn.dataset.date;
+  });
+});
+
+// ── Поиск по тексту ────────────────────────────────────────────
+document.getElementById('search-input').addEventListener('input', function() {
+  renderContracts(allContracts, this.value.trim().toLowerCase());
+});
+
+// ── Рендер карточек ────────────────────────────────────────────
+function scoreClass(s) {
+  if (s >= 8) return 'score-best';
+  if (s >= 6) return 'score-high';
+  if (s >= 4) return 'score-mid';
+  return 'score-low';
+}
+function fmtPrice(p) {
+  if (!p) return 'н/д';
+  return p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+function renderContracts(contracts, query = '') {
+  const list = document.getElementById('results-list');
+  const filtered = query
+    ? contracts.filter(c => (c.subject||'').toLowerCase().includes(query) || (c.customer||'').toLowerCase().includes(query))
+    : contracts;
+
+  document.getElementById('results-count').textContent =
+    filtered.length ? `Найдено: ${filtered.length}` : '';
+
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty">
+      <div class="empty-icon">🔍</div>
+      <div class="empty-title">Закупок не найдено</div>
+      <div class="empty-text">Попробуйте изменить фильтры или ключевые слова</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(c => {
+    const score  = c.quick_score || 0;
+    const stars  = score >= 8 ? '🔥' : '⭐'.repeat(Math.min(score, 5));
+    const subj   = (c.subject || 'Предмет не указан').slice(0, 200);
+    const price  = fmtPrice(c.price);
+    const cust   = (c.customer || '').slice(0, 80);
+    const comment = (c.quick_comment || '').slice(0, 180);
+    const url    = c.url || 'https://zakupki.gov.ru';
+    const dbId   = c.id || 0;
+
+    return `<div class="card">
+      <div class="card-header">
+        <div class="score-badge ${scoreClass(score)}">${score > 0 ? score : '–'}</div>
+        <div class="card-subject">${escHtml(subj)}</div>
+      </div>
+      <div class="card-meta">
+        <div class="meta-item">💰 <strong>${escHtml(price)}</strong></div>
+        ${cust ? `<div class="meta-item">🏛 ${escHtml(cust)}</div>` : ''}
+      </div>
+      ${comment ? `<div class="card-comment">${escHtml(comment)}</div>` : ''}
+      <div class="card-actions">
+        ${dbId ? `<button class="btn btn-primary" onclick="analyzeContract(${dbId})">🤖 Анализ</button>` : ''}
+        <a class="btn btn-secondary" href="${url}" target="_blank">🔗 Открыть</a>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Анализ через бот ───────────────────────────────────────────
+function analyzeContract(dbId) {
+  tg.sendData(JSON.stringify({ action: 'analyze', contract_id: dbId }));
+}
+
+// ── Применить фильтры ──────────────────────────────────────────
+document.getElementById('apply-filters').addEventListener('click', () => {
+  const filters = {
+    action: 'search',
+    law: activeLaw,
+    date: activeDate,
+    keywords: document.getElementById('kw-input').value.trim(),
+    price_from: document.getElementById('price-from').value || null,
+    price_to:   document.getElementById('price-to').value   || null,
+  };
+  // Переключаемся на результаты
+  document.querySelectorAll('.tab, .page').forEach(el => el.classList.remove('active'));
+  document.querySelector('[data-tab="results"]').classList.add('active');
+  document.getElementById('tab-results').classList.add('active');
+  // Показываем лоадер
+  document.getElementById('results-list').innerHTML = `<div class="loader-wrap">
+    <div class="spinner"></div>
+    <div class="loader-text">Ищу закупки…</div>
+  </div>`;
+  // Отправляем в бот
+  tg.sendData(JSON.stringify(filters));
+});
+
+// ── Получение данных от бота ───────────────────────────────────
+function loadData(data) {
+  if (data.contracts) {
+    allContracts = data.contracts;
+    const sub = `${data.contracts.length} закупок · ${data.date || 'сегодня'}`;
+    document.getElementById('header-sub').textContent = sub;
+    renderContracts(allContracts);
+  }
+  if (data.subs) {
+    renderSubs(data.subs);
+  }
+}
+
+function renderSubs(subs) {
+  const el = document.getElementById('subs-list');
+  if (!subs.length) {
+    el.innerHTML = `<div class="empty">
+      <div class="empty-icon">🔔</div>
+      <div class="empty-title">Нет активных подписок</div>
+      <div class="empty-text">Создайте подписку в боте — она будет отображаться здесь</div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = subs.map(s => `
+    <div class="sub-card">
+      <div class="sub-icon">🔔</div>
+      <div class="sub-info">
+        <div class="sub-name">${escHtml(s.name)}</div>
+        <div class="sub-meta">Каждые ${s.interval_h} ч · ${s.active ? 'активна' : 'на паузе'}</div>
+      </div>
+      <div class="sub-indicator ${s.active ? 'sub-active' : 'sub-inactive'}"></div>
+    </div>
+  `).join('');
+}
+
+// ── Инициализация с данными из бота ───────────────────────────
+try {
+  const startParam = tg.initDataUnsafe?.start_param;
+  if (startParam) {
+    const data = JSON.parse(decodeURIComponent(startParam));
+    loadData(data);
+  } else {
+    // Показываем пустое состояние если нет данных
+    document.getElementById('header-sub').textContent = 'Откройте из бота';
+    document.getElementById('results-list').innerHTML = `<div class="empty">
+      <div class="empty-icon">📋</div>
+      <div class="empty-title">Нет данных</div>
+      <div class="empty-text">Запустите поиск в боте — результаты появятся здесь</div>
+    </div>`;
+    renderSubs([]);
+  }
+} catch(e) {
+  console.error(e);
+}
+
+// Тема меняется динамически
+tg.onEvent('themeChanged', () => {
+  document.documentElement.style.setProperty('--accent', tg.themeParams.button_color || '#2481cc');
+});
+</script>
+</body>
+</html>

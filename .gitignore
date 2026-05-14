@@ -1,0 +1,23 @@
+# Секреты и конфиги с токенами
+config/bot_config.json
+
+# Бинарники
+cloudflared.exe
+
+# База данных
+data/state.db
+data/contracts/
+data/documents/
+
+# Логи
+*.log
+
+# Кэш Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Временные файлы
+*.tmp
+_parser_*.json

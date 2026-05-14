@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git push -f)",
+      "Bash(Remove-Item * -Recurse*)",
+      "Bash(rmdir /s*)",
+      "Bash(del /f /s*)",
+      "Bash(format *)",
+      "Bash(del * state.db*)",
+      "Bash(Remove-Item * state.db*)"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "active": "шаблон",
+  "presets": {
+    "default": {
+      "keywords": [],
+      "okpd2_key": 8873870,
+      "okpd2_section": "J",
+      "region_codes": [],
+      "price_from": null,
+      "price_to": null,
+      "law": "44",
+      "date_from": "today",
+      "date_to": "today"
+    },
+    "шаблон": {
+      "keywords": [],
+      "okpd2_key": 8873870,
+      "okpd2_section": "J",
+      "region_codes": [],
+      "price_from": 3000000.0,
+      "price_to": null,
+      "law": "both",
+      "date_from": "today",
+      "date_to": "today"
+    }
+  }
+}
