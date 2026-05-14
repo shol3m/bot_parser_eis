@@ -67,12 +67,21 @@ def build_search_params(filters: dict, page: int = 1) -> dict:
     for code in filters.get("region_codes", []):
         params.setdefault("af:customerPlace", []).append(code)
 
+    if filters.get("customer_inn"):
+        params["customerFullNameOrinn"] = filters["customer_inn"].strip()
+
     date_from = _resolve_date(filters.get("date_from"))
-    date_to = _resolve_date(filters.get("date_to"))
-    if date_from:
-        params["publishDateFrom"] = date_from
-    if date_to:
-        params["publishDateTo"] = date_to
+    date_to   = _resolve_date(filters.get("date_to"))
+    date_type = filters.get("date_type", "published")
+    if date_type == "updated":
+        if date_from: params["updateDateFrom"] = date_from
+        if date_to:   params["updateDateTo"]   = date_to
+    elif date_type == "end":
+        if date_from: params["auctionDateFrom"] = date_from
+        if date_to:   params["auctionDateTo"]   = date_to
+    else:  # published (default)
+        if date_from: params["publishDateFrom"] = date_from
+        if date_to:   params["publishDateTo"]   = date_to
 
     return params
 

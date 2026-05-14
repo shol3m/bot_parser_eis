@@ -350,6 +350,45 @@
       padding: 4px 0 10px;
     }
 
+    /* ── Переключатель разделов (закупки / запросы цены) ── */
+    .section-switch {
+      display: flex;
+      gap: 8px;
+      padding: 8px 12px 0;
+    }
+    .section-btn {
+      flex: 1;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1.5px solid var(--divider);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--hint);
+      cursor: pointer;
+      text-align: center;
+      transition: all .15s;
+    }
+    .section-btn.active {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+    }
+
+    /* ── Экран «поиск запущен» ── */
+    .search-launched {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 24px;
+      text-align: center;
+    }
+    .search-launched.visible { display: flex; }
+    .search-launched-icon { font-size: 48px; margin-bottom: 16px; }
+    .search-launched-title { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .search-launched-text  { font-size: 14px; color: var(--hint); line-height: 1.5; }
+
     /* ── Сортировка ── */
     .sort-bar {
       display: flex;
@@ -445,6 +484,10 @@
 
 <!-- Страница результатов -->
 <div class="page active" id="tab-results">
+  <div class="section-switch">
+    <button class="section-btn active" data-section="procurement">🔍 Закупки</button>
+    <button class="section-btn" data-section="priceplan">💰 Запросы цены</button>
+  </div>
   <div class="search-bar">
     <span class="search-icon">🔍</span>
     <input type="text" id="search-input" placeholder="Поиск по предмету…">
@@ -466,7 +509,21 @@
 
 <!-- Страница фильтров -->
 <div class="page" id="tab-filters">
-  <div style="padding: 4px 0 12px">
+
+  <!-- Экран «поиск запущен» (показывается перед закрытием) -->
+  <div class="search-launched" id="search-launched">
+    <div class="search-launched-icon">🔍</div>
+    <div class="search-launched-title">Поиск запущен</div>
+    <div class="search-launched-text">Бот получил фильтры и ищет закупки.<br>Когда найдёт — пришлёт уведомление с кнопкой «Открыть результаты».</div>
+  </div>
+
+  <div id="filters-content" style="padding: 4px 0 12px">
+
+    <!-- Переключатель раздела -->
+    <div class="section-switch" style="padding: 0 0 12px">
+      <button class="section-btn active" data-filter-section="procurement">🔍 Закупки</button>
+      <button class="section-btn" data-filter-section="priceplan">💰 Запросы цены</button>
+    </div>
 
     <!-- Блок активного пресета из бота -->
     <div class="preset-info" id="preset-info" style="display:none">
@@ -518,7 +575,7 @@
         <input class="input-field" id="kw-search" type="text" placeholder="разработка, информационная система">
       </div>
 
-      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div class="filter-row price-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="font-size:13px;color:var(--hint)">Цена, ₽</div>
         <div style="display:flex;gap:8px">
           <input class="input-field" id="price-from-search" type="number" placeholder="От" style="flex:1;text-align:right">
@@ -532,6 +589,9 @@
     </button>
 
     <!-- Разделитель: фильтр текущих результатов -->
+    <div id="priceplan-note" style="display:none;background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:10px;padding:10px 14px;margin-top:12px;font-size:13px;color:var(--hint)">
+      💡 В запросах цены нет НМЦ — цена не отображается. Доступны: ключевые слова, ОКПД2, заказчик, дата.
+    </div>
     <div style="margin-top:20px">
       <div class="filter-section-title" style="padding:0 0 8px">Фильтр текущих результатов</div>
       <div class="filter-section">
@@ -560,7 +620,7 @@
         Применить к результатам
       </button>
     </div>
-  </div>
+  </div>  <!-- /filters-content -->
 </div>
 
 <!-- Страница подписок -->
@@ -591,10 +651,13 @@ tg.expand();
 document.documentElement.style.setProperty('--accent', tg.themeParams?.button_color || '#2481cc');
 
 let allContracts = [];
-let activeLaw = 'all';    // для фильтра результатов
+let allPriceplans = [];
+let activeSection = 'procurement';   // результаты: какой раздел показываем
+let filterSection = 'procurement';   // фильтры: для какого раздела
+let activeLaw = 'all';
 let activeSort = 'score';
 let activeMinScore = 0;
-let searchLaw = '44';     // для нового поиска
+let searchLaw = '44';
 let searchOkpd = 'J';
 let searchDate = 'today';
 let botUsername = '';
@@ -602,6 +665,47 @@ let currentUserId = '';
 let botPresets = [];
 let activeBotPreset = '';
 let activeBotFilter = null;
+
+// ── localStorage helpers ────────────────────────────────────────
+const LS_KEY = 'goszakupki_filters_v1';
+function saveFiltersToLS() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      searchLaw, searchOkpd, searchDate,
+      kw:       document.getElementById('kw-search')?.value || '',
+      priceFrom:document.getElementById('price-from-search')?.value || '',
+      priceTo:  document.getElementById('price-to-search')?.value || '',
+      filterSection,
+    }));
+  } catch(e) {}
+}
+function loadFiltersFromLS() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    if (saved.searchLaw) {
+      searchLaw = saved.searchLaw;
+      document.querySelectorAll('#law-ctrl [data-law]').forEach(b => {
+        b.classList.toggle('active', b.dataset.law === searchLaw);
+      });
+    }
+    if (saved.searchOkpd) {
+      searchOkpd = saved.searchOkpd;
+      document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(b => {
+        b.classList.toggle('active', b.dataset.okpd === searchOkpd);
+      });
+    }
+    if (saved.searchDate) {
+      searchDate = saved.searchDate;
+      document.querySelectorAll('#date-ctrl [data-date]').forEach(b => {
+        b.classList.toggle('active', b.dataset.date === searchDate);
+      });
+    }
+    if (saved.kw)        document.getElementById('kw-search').value = saved.kw;
+    if (saved.priceFrom) document.getElementById('price-from-search').value = saved.priceFrom;
+    if (saved.priceTo)   document.getElementById('price-to-search').value   = saved.priceTo;
+    if (saved.filterSection) switchFilterSection(saved.filterSection, false);
+  } catch(e) {}
+}
 
 // ── Таб-навигация ──────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
@@ -612,12 +716,43 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
+// ── Переключатель разделов в Results ───────────────────────────
+document.querySelectorAll('.section-switch [data-section]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.section-switch [data-section]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeSection = btn.dataset.section;
+    const contracts = activeSection === 'priceplan' ? allPriceplans : allContracts;
+    renderContracts(contracts, document.getElementById('search-input').value.trim().toLowerCase());
+  });
+});
+
+// ── Переключатель разделов в Filters ───────────────────────────
+function switchFilterSection(section, save = true) {
+  filterSection = section;
+  document.querySelectorAll('[data-filter-section]').forEach(b => {
+    b.classList.toggle('active', b.dataset.filterSection === section);
+  });
+  // Скрыть/показать поля цены (нет в запросах цены)
+  const priceRows = document.querySelectorAll('.price-row');
+  priceRows.forEach(el => el.style.display = section === 'priceplan' ? 'none' : '');
+  document.getElementById('priceplan-note').style.display = section === 'priceplan' ? 'block' : 'none';
+  // Обновить текст кнопки поиска
+  document.getElementById('run-search').textContent =
+    section === 'priceplan' ? '💰 Запустить поиск запросов цены' : '🔍 Запустить поиск закупок';
+  if (save) saveFiltersToLS();
+}
+document.querySelectorAll('[data-filter-section]').forEach(btn => {
+  btn.addEventListener('click', () => switchFilterSection(btn.dataset.filterSection));
+});
+
 // ── Контролы нового поиска ─────────────────────────────────────
 document.querySelectorAll('#law-ctrl [data-law]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('#law-ctrl [data-law]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     searchLaw = btn.dataset.law;
+    saveFiltersToLS();
   });
 });
 document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(btn => {
@@ -625,6 +760,7 @@ document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(btn => {
     document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     searchOkpd = btn.dataset.okpd;
+    saveFiltersToLS();
   });
 });
 document.querySelectorAll('#date-ctrl [data-date]').forEach(btn => {
@@ -632,30 +768,41 @@ document.querySelectorAll('#date-ctrl [data-date]').forEach(btn => {
     document.querySelectorAll('#date-ctrl [data-date]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     searchDate = btn.dataset.date;
+    saveFiltersToLS();
   });
 });
 
 // ── Запуск поиска через бот (tg.sendData) ──────────────────────
 document.getElementById('run-search').addEventListener('click', () => {
+  saveFiltersToLS();
   const kw = document.getElementById('kw-search').value.trim();
-  const pf = document.getElementById('price-from-search').value;
-  const pt = document.getElementById('price-to-search').value;
+  const pf = document.getElementById('price-from-search')?.value;
+  const pt = document.getElementById('price-to-search')?.value;
 
   const payload = {
-    action:     'search',
-    law:        searchLaw,
+    action:        filterSection === 'priceplan' ? 'priceplan_search' : 'search',
+    law:           searchLaw,
     okpd2_section: searchOkpd === 'all' ? null : searchOkpd,
-    date:       searchDate,
-    keywords:   kw,
-    price_from: pf ? parseFloat(pf) : null,
-    price_to:   pt ? parseFloat(pt) : null,
+    date:          searchDate,
+    keywords:      kw,
+    price_from:    pf ? parseFloat(pf) : null,
+    price_to:      pt ? parseFloat(pt) : null,
   };
 
-  try {
-    tg.sendData(JSON.stringify(payload));
-  } catch(e) {
-    tg.showAlert('Функция доступна только внутри Telegram.');
-  }
+  // Показываем экран «запущен» на 1.5 сек перед закрытием
+  document.getElementById('filters-content').style.display = 'none';
+  document.getElementById('search-launched').classList.add('visible');
+
+  setTimeout(() => {
+    try {
+      tg.sendData(JSON.stringify(payload));
+    } catch(e) {
+      // При открытии вне Telegram — скрываем экран обратно
+      document.getElementById('search-launched').classList.remove('visible');
+      document.getElementById('filters-content').style.display = '';
+      tg.showAlert('Функция доступна только внутри Telegram.');
+    }
+  }, 1200);
 });
 
 // ── Сортировка ─────────────────────────────────────────────────
@@ -899,13 +1046,26 @@ async function loadData() {
       const sub = `${allContracts.length} закупок · ${data.date || ''}`;
       document.getElementById('header-sub').textContent = sub;
       renderPresetInfo(data);
-      renderContracts(allContracts);
+      if (activeSection === 'procurement') renderContracts(allContracts);
     } else {
       showEmpty();
     }
   } catch(e) {
     showEmpty();
   }
+
+  // Загружаем запросы цены
+  try {
+    const url = currentUserId
+      ? `./priceplan_${currentUserId}.json?t=${Date.now()}`
+      : `./priceplan.json?t=${Date.now()}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      allPriceplans = data.contracts || [];
+      if (activeSection === 'priceplan') renderContracts(allPriceplans);
+    }
+  } catch(e) {}
 
   try {
     const url = currentUserId
@@ -935,6 +1095,7 @@ async function init() {
     }
   } catch(e) {}
 
+  loadFiltersFromLS();
   await loadData();
 }
 

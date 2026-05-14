@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 
 from agents.parser_agent import run as parse
+from agents.priceplan_agent import run as parse_priceplan
 from agents.analyze_agent import run as analyze
 from data.db import update_detail
 
@@ -19,6 +20,16 @@ def fetch_contracts(
 ) -> list[dict]:
     """Шаг 1: парсинг закупок. Возвращает список закупок без записи в БД."""
     return parse(filters, max_pages=max_pages, stop_event=stop_event, progress_cb=progress_cb)
+
+
+def fetch_priceplan(
+    filters: dict,
+    max_pages: int = 0,
+    stop_event: threading.Event | None = None,
+    progress_cb=None,
+) -> list[dict]:
+    """Парсинг запросов цены товаров и услуг."""
+    return parse_priceplan(filters, max_pages=max_pages, stop_event=stop_event, progress_cb=progress_cb)
 
 
 def analyze_contract(
