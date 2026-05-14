@@ -267,12 +267,14 @@ def save_results(results: list[dict], filters: dict) -> Path:
     return filepath
 
 
-def run(config_path: str = "config/filters.json", max_pages: int = 0, download_docs: bool = False, stop_event=None) -> list[dict]:
+def run(config_path: str = "config/filters.json", max_pages: int = 0, download_docs: bool = False,
+        stop_event=None, progress_cb=None) -> list[dict]:
     """
     Основная функция.
     max_pages=0 — обходить все страницы автоматически.
     download_docs=True — скачивать документы к каждой закупке.
     stop_event — threading.Event; если установлен, парсер останавливается между страницами.
+    progress_cb(found, page, total_pages) — вызывается после каждой страницы.
     """
     with open(config_path, encoding="utf-8") as f:
         filters = json.load(f)
@@ -293,6 +295,11 @@ def run(config_path: str = "config/filters.json", max_pages: int = 0, download_d
     if max_pages:
         total_pages = min(total_pages, max_pages)
     print(f"{len(page_results)} записей | всего страниц: {total_pages}")
+    if progress_cb:
+        try:
+            progress_cb(len(all_results), 1, total_pages)
+        except Exception:
+            pass
 
     # Остальные страницы
     for page in range(2, total_pages + 1):
@@ -310,6 +317,11 @@ def run(config_path: str = "config/filters.json", max_pages: int = 0, download_d
             break
         all_results.extend(page_results)
         print(f"{len(page_results)} записей")
+        if progress_cb:
+            try:
+                progress_cb(len(all_results), page, total_pages)
+            except Exception:
+                pass
 
     print(f"\nВсего собрано: {len(all_results)} закупок")
 

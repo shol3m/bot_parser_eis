@@ -114,7 +114,7 @@
     .score-low    { background: #999; }
     .score-mid    { background: #f5a623; }
     .score-high   { background: #27ae60; }
-    .score-best   { background: #e74c3c; }
+    .score-best   { background: #7c3aed; }
 
     .card-subject {
       font-size: 14px;
@@ -265,6 +265,60 @@
     .sub-active   { background: #27ae60; }
     .sub-inactive { background: var(--hint); }
 
+    /* ── Инфо-блок активного пресета ── */
+    .preset-info {
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .preset-info-body { flex: 1; }
+    .preset-info-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .preset-info-detail {
+      font-size: 12px;
+      color: var(--hint);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+    .preset-icon { font-size: 22px; }
+
+    /* ── Кнопка "искать в боте" ── */
+    .btn-bot {
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Выбор пресета ── */
+    .preset-chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding: 4px 14px 12px;
+    }
+    .preset-chip {
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1.5px solid var(--divider);
+      background: transparent;
+      font-size: 13px;
+      color: var(--hint);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .preset-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
     /* ── Пустые состояния ── */
     .empty {
       text-align: center;
@@ -296,6 +350,63 @@
       padding: 4px 0 10px;
     }
 
+    /* ── Сортировка ── */
+    .sort-bar {
+      display: flex;
+      gap: 6px;
+      padding: 0 0 10px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .sort-bar::-webkit-scrollbar { display: none; }
+    .sort-chip {
+      flex-shrink: 0;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: none;
+      background: var(--bg);
+      color: var(--hint);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .sort-chip.active {
+      background: var(--accent);
+      color: var(--accent-fg);
+    }
+
+    /* ── Дата в карточке ── */
+    .card-dates {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .date-item {
+      font-size: 12px;
+      color: var(--hint);
+    }
+    .date-item.deadline { color: #e74c3c; font-weight: 500; }
+
+    /* ── Кнопка обновить в шапке ── */
+    .header-refresh {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      color: var(--hint);
+      padding: 4px;
+      line-height: 1;
+    }
+    .header-refresh:active { opacity: .5; }
+    .header { position: relative; }
+
     /* ── Поиск в шапке ── */
     .search-bar {
       background: var(--bg2);
@@ -323,6 +434,7 @@
 <div class="header">
   <div class="header-title">Госзакупки</div>
   <div class="header-sub" id="header-sub">Загрузка...</div>
+  <button class="header-refresh" id="btn-refresh" title="Обновить данные">↻</button>
 </div>
 
 <div class="tabs">
@@ -337,6 +449,12 @@
     <span class="search-icon">🔍</span>
     <input type="text" id="search-input" placeholder="Поиск по предмету…">
   </div>
+  <div class="sort-bar">
+    <button class="sort-chip active" data-sort="score">🏆 Рейтинг</button>
+    <button class="sort-chip" data-sort="price_desc">💰 Цена ↓</button>
+    <button class="sort-chip" data-sort="price_asc">💰 Цена ↑</button>
+    <button class="sort-chip" data-sort="date">📅 Дата</button>
+  </div>
   <div id="results-count" class="results-count"></div>
   <div id="results-list">
     <div class="loader-wrap">
@@ -350,50 +468,66 @@
 <div class="page" id="tab-filters">
   <div style="padding: 4px 0 12px">
 
-    <div class="filter-section">
-      <div class="filter-section-title">Закон</div>
-      <div class="filter-row">
-        <div class="seg-ctrl" style="width:100%">
-          <button class="seg-btn active" data-law="44">44‑ФЗ</button>
-          <button class="seg-btn" data-law="223">223‑ФЗ</button>
-          <button class="seg-btn" data-law="both">Оба</button>
-        </div>
+    <!-- Блок активного пресета из бота -->
+    <div class="preset-info" id="preset-info" style="display:none">
+      <span class="preset-icon">⚙️</span>
+      <div class="preset-info-body">
+        <div class="preset-info-name" id="preset-info-name">Пресет</div>
+        <div class="preset-info-detail" id="preset-info-detail"></div>
       </div>
     </div>
 
+    <!-- Пресеты -->
+    <div class="filter-section" id="presets-section" style="display:none">
+      <div class="filter-section-title">Пресет бота</div>
+      <div class="preset-chips" id="preset-chips"></div>
+    </div>
+
+    <!-- Разделитель: клиентские фильтры -->
     <div class="filter-section">
-      <div class="filter-section-title">Ключевые слова</div>
-      <div class="filter-row">
+      <div class="filter-section-title">Фильтр результатов</div>
+
+      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="font-size:13px;color:var(--hint)">Закон</div>
+        <div class="seg-ctrl">
+          <button class="seg-btn active" data-law="all">Все</button>
+          <button class="seg-btn" data-law="44">44‑ФЗ</button>
+          <button class="seg-btn" data-law="223">223‑ФЗ</button>
+        </div>
+      </div>
+
+      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="font-size:13px;color:var(--hint)">Ключевые слова</div>
         <input class="input-field" id="kw-input" type="text" placeholder="разработка ПО, информационная система">
       </div>
-    </div>
 
-    <div class="filter-section">
-      <div class="filter-section-title">Начальная цена, ₽</div>
-      <div class="filter-row">
-        <label class="filter-label" style="font-size:13px;color:var(--hint)">От</label>
-        <input class="input-field" id="price-from" type="number" placeholder="500 000" style="width:140px;text-align:right">
+      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="font-size:13px;color:var(--hint)">Начальная цена, ₽</div>
+        <div style="display:flex;gap:8px">
+          <input class="input-field" id="price-from" type="number" placeholder="От" style="flex:1;text-align:right">
+          <input class="input-field" id="price-to" type="number" placeholder="До" style="flex:1;text-align:right">
+        </div>
       </div>
-      <div class="filter-row">
-        <label class="filter-label" style="font-size:13px;color:var(--hint)">До</label>
-        <input class="input-field" id="price-to" type="number" placeholder="без ограничений" style="width:140px;text-align:right">
-      </div>
-    </div>
 
-    <div class="filter-section">
-      <div class="filter-section-title">Дата публикации</div>
-      <div class="filter-row">
-        <div class="seg-ctrl" style="width:100%">
-          <button class="seg-btn active" data-date="today">Сегодня</button>
-          <button class="seg-btn" data-date="yesterday">Вчера</button>
-          <button class="seg-btn" data-date="week">Неделя</button>
+      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="font-size:13px;color:var(--hint)">Минимальный рейтинг</div>
+        <div class="seg-ctrl">
+          <button class="seg-btn active" data-score="0">Все</button>
+          <button class="seg-btn" data-score="4">4+</button>
+          <button class="seg-btn" data-score="6">6+</button>
+          <button class="seg-btn" data-score="8">8+</button>
         </div>
       </div>
     </div>
 
-    <button class="btn btn-primary" style="width:100%;margin-top:4px;padding:14px" id="apply-filters">
-      🔍 Применить фильтры
-    </button>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-primary" style="flex:1;padding:14px" id="apply-filters">
+        Применить
+      </button>
+      <button class="btn btn-bot" style="flex:1;padding:14px" id="search-in-bot">
+        🤖 Искать в боте
+      </button>
+    </div>
   </div>
 </div>
 
@@ -416,9 +550,15 @@ tg.expand();
 document.documentElement.style.setProperty('--accent', tg.themeParams.button_color || '#2481cc');
 
 let allContracts = [];
-let activeLaw = '44';
+let activeLaw = 'all';
 let activeDate = 'today';
+let activeSort = 'score';
+let activeMinScore = 0;
 let botUsername = '';
+let currentUserId = '';
+let botPresets = [];
+let activeBotPreset = '';
+let activeBotFilter = null;
 
 // ── Таб-навигация ──────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
@@ -427,6 +567,22 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
   });
+});
+
+// ── Сортировка ─────────────────────────────────────────────────
+document.querySelectorAll('[data-sort]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-sort]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeSort = btn.dataset.sort;
+    renderContracts(allContracts, document.getElementById('search-input').value.trim().toLowerCase());
+  });
+});
+
+// ── Кнопка обновить ────────────────────────────────────────────
+document.getElementById('btn-refresh').addEventListener('click', () => {
+  document.getElementById('results-list').innerHTML = `<div class="loader-wrap"><div class="spinner"></div><div class="loader-text">Обновление…</div></div>`;
+  loadData();
 });
 
 // ── Сегментные контролы ────────────────────────────────────────
@@ -443,6 +599,23 @@ document.querySelectorAll('[data-date]').forEach(btn => {
     btn.classList.add('active');
     activeDate = btn.dataset.date;
   });
+});
+
+document.querySelectorAll('[data-score]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-score]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeMinScore = parseInt(btn.dataset.score) || 0;
+  });
+});
+
+document.getElementById('search-in-bot').addEventListener('click', () => {
+  if (!botUsername) {
+    tg.showAlert('Имя бота неизвестно. Откройте бот вручную.');
+    return;
+  }
+  tg.close();
+  tg.openTelegramLink(`https://t.me/${botUsername}?start=fetch`);
 });
 
 // ── Поиск по тексту ────────────────────────────────────────────
@@ -462,14 +635,46 @@ function fmtPrice(p) {
   return p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
+function sortContracts(list) {
+  const copy = [...list];
+  if (activeSort === 'score') {
+    copy.sort((a, b) => (b.quick_score || 0) - (a.quick_score || 0));
+  } else if (activeSort === 'price_desc') {
+    copy.sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
+  } else if (activeSort === 'price_asc') {
+    copy.sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+  } else if (activeSort === 'date') {
+    copy.sort((a, b) => (b.date_updated || '').localeCompare(a.date_updated || ''));
+  }
+  return copy;
+}
+
+function parsePrice(p) {
+  if (!p) return 0;
+  return parseFloat(String(p).replace(/[^\d.]/g, '')) || 0;
+}
+
+function isDeadlineSoon(dateStr) {
+  if (!dateStr) return false;
+  const parts = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if (!parts) return false;
+  const d = new Date(parts[3], parts[2] - 1, parts[1]);
+  const diff = (d - Date.now()) / 86400000;
+  return diff >= 0 && diff <= 3;
+}
+
 function renderContracts(contracts, query = '') {
   const list = document.getElementById('results-list');
-  const filtered = query
+  let filtered = query
     ? contracts.filter(c => (c.subject||'').toLowerCase().includes(query) || (c.customer||'').toLowerCase().includes(query))
     : contracts;
 
+  filtered = sortContracts(filtered);
+
+  const total = allContracts.length;
+  const shown = filtered.length;
   document.getElementById('results-count').textContent =
-    filtered.length ? `Найдено: ${filtered.length}` : '';
+    shown ? (shown < total ? `Показано: ${shown} из ${total}` : `Закупок: ${shown}`) : '';
 
   if (!filtered.length) {
     list.innerHTML = `<div class="empty">
@@ -481,14 +686,22 @@ function renderContracts(contracts, query = '') {
   }
 
   list.innerHTML = filtered.map(c => {
-    const score  = c.quick_score || 0;
-    const stars  = score >= 8 ? '🔥' : '⭐'.repeat(Math.min(score, 5));
-    const subj   = (c.subject || 'Предмет не указан').slice(0, 200);
-    const price  = fmtPrice(c.price);
-    const cust   = (c.customer || '').slice(0, 80);
+    const score   = c.quick_score || 0;
+    const subj    = (c.subject || 'Предмет не указан').slice(0, 200);
+    const price   = fmtPrice(c.price);
+    const cust    = (c.customer || '').slice(0, 80);
     const comment = (c.quick_comment || '').slice(0, 180);
-    const url    = c.url || 'https://zakupki.gov.ru';
-    const dbId   = c.id || 0;
+    const url     = c.url || 'https://zakupki.gov.ru';
+    const dbId    = c.id || 0;
+    const datePub = c.date_updated || '';
+    const dateEnd = c.date_end || '';
+    const soon    = isDeadlineSoon(dateEnd);
+
+    const datesHtml = (datePub || dateEnd) ? `
+      <div class="card-dates">
+        ${datePub ? `<span class="date-item">📅 ${escHtml(datePub)}</span>` : ''}
+        ${dateEnd ? `<span class="date-item ${soon ? 'deadline' : ''}">⏳ до ${escHtml(dateEnd)}${soon ? ' !' : ''}</span>` : ''}
+      </div>` : '';
 
     return `<div class="card">
       <div class="card-header">
@@ -499,6 +712,7 @@ function renderContracts(contracts, query = '') {
         <div class="meta-item">💰 <strong>${escHtml(price)}</strong></div>
         ${cust ? `<div class="meta-item">🏛 ${escHtml(cust)}</div>` : ''}
       </div>
+      ${datesHtml}
       ${comment ? `<div class="card-comment">${escHtml(comment)}</div>` : ''}
       <div class="card-actions">
         ${dbId ? `<button class="btn btn-primary" onclick="analyzeContract(${dbId})">🤖 Анализ</button>` : ''}
@@ -525,18 +739,19 @@ function analyzeContract(dbId) {
 
 // ── Применить фильтры (клиентская фильтрация) ─────────────────
 document.getElementById('apply-filters').addEventListener('click', () => {
-  const kw       = document.getElementById('kw-input').value.trim().toLowerCase();
+  const kw        = document.getElementById('kw-input').value.trim().toLowerCase();
   const priceFrom = parseFloat(document.getElementById('price-from').value) || 0;
   const priceTo   = parseFloat(document.getElementById('price-to').value)   || Infinity;
 
   const filtered = allContracts.filter(c => {
-    const matchKw = !kw || (c.subject||'').toLowerCase().includes(kw) || (c.customer||'').toLowerCase().includes(kw);
-    const price   = parseFloat((c.price||'').replace(/[^\d.]/g, '')) || 0;
-    const matchP  = (!priceFrom || price >= priceFrom) && (!isFinite(priceTo) || price <= priceTo);
-    return matchKw && matchP;
+    const matchKw    = !kw || (c.subject||'').toLowerCase().includes(kw) || (c.customer||'').toLowerCase().includes(kw);
+    const price      = parsePrice(c.price);
+    const matchP     = (!priceFrom || price >= priceFrom) && (!isFinite(priceTo) || price <= priceTo);
+    const matchScore = (c.quick_score || 0) >= activeMinScore;
+    const matchLaw   = activeLaw === 'all' || (c._law || '') === activeLaw;
+    return matchKw && matchP && matchScore && matchLaw;
   });
 
-  // Переключаемся на результаты
   document.querySelectorAll('.tab, .page').forEach(el => el.classList.remove('active'));
   document.querySelector('[data-tab="results"]').classList.add('active');
   document.getElementById('tab-results').classList.add('active');
@@ -565,24 +780,50 @@ function renderSubs(subs) {
   `).join('');
 }
 
-// ── Инициализация: загружаем данные с сервера ─────────────────
-async function init() {
-  // ID текущего пользователя из Telegram WebApp
-  const userId = tg.initDataUnsafe?.user?.id || '';
+// ── Рендер блока активного пресета ────────────────────────────
+function renderPresetInfo(data) {
+  const name   = data.active_preset || '';
+  const filter = data.active_filter || null;
+  const presets = data.presets || [];
 
-  // Загружаем конфиг бота (username для deep links)
-  try {
-    const r = await fetch('./config.json?t=' + Date.now());
-    if (r.ok) {
-      const cfg = await r.json();
-      botUsername = cfg.bot_username || '';
-    }
-  } catch(e) {}
+  if (name && filter) {
+    const law  = filter.law  || '44';
+    const okpd = filter.okpd2_section || '—';
+    const kw   = (filter.keywords || []).join(', ') || 'не заданы';
+    const pf   = filter.price_from ? `от ${Number(filter.price_from).toLocaleString('ru')} ₽` : '';
+    const pt   = filter.price_to   ? `до ${Number(filter.price_to).toLocaleString('ru')} ₽`   : '';
+    const priceStr = [pf, pt].filter(Boolean).join(' ') || 'любая';
 
-  // Загружаем результаты поиска (файл конкретного пользователя)
+    document.getElementById('preset-info').style.display = 'flex';
+    document.getElementById('preset-info-name').textContent = name;
+    document.getElementById('preset-info-detail').textContent =
+      `${law}-ФЗ · ОКПД2: ${okpd} · Сумма: ${priceStr} · Слова: ${kw}`;
+
+    activeBotFilter  = filter;
+    activeBotPreset  = name;
+    botPresets       = presets;
+  }
+
+  if (presets.length > 1) {
+    const section = document.getElementById('presets-section');
+    section.style.display = '';
+    document.getElementById('preset-chips').innerHTML = presets.map(p =>
+      `<button class="preset-chip ${p === name ? 'active' : ''}" data-preset="${escHtml(p)}">${escHtml(p)}</button>`
+    ).join('');
+    document.querySelectorAll('.preset-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.preset-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    });
+  }
+}
+
+// ── Загрузка данных (вызывается при старте и при нажатии ↻) ───
+async function loadData() {
   try {
-    const url = userId
-      ? `./data_${userId}.json?t=${Date.now()}`
+    const url = currentUserId
+      ? `./data_${currentUserId}.json?t=${Date.now()}`
       : `./data.json?t=${Date.now()}`;
     const res = await fetch(url);
     if (res.ok) {
@@ -590,6 +831,7 @@ async function init() {
       allContracts = data.contracts || [];
       const sub = `${allContracts.length} закупок · ${data.date || ''}`;
       document.getElementById('header-sub').textContent = sub;
+      renderPresetInfo(data);
       renderContracts(allContracts);
     } else {
       showEmpty();
@@ -598,10 +840,9 @@ async function init() {
     showEmpty();
   }
 
-  // Загружаем подписки (файл конкретного пользователя)
   try {
-    const url = userId
-      ? `./subs_${userId}.json?t=${Date.now()}`
+    const url = currentUserId
+      ? `./subs_${currentUserId}.json?t=${Date.now()}`
       : `./subs.json?t=${Date.now()}`;
     const res = await fetch(url);
     if (res.ok) {
@@ -613,6 +854,21 @@ async function init() {
   } catch(e) {
     renderSubs([]);
   }
+}
+
+// ── Инициализация ──────────────────────────────────────────────
+async function init() {
+  currentUserId = tg.initDataUnsafe?.user?.id || '';
+
+  try {
+    const r = await fetch('./config.json?t=' + Date.now());
+    if (r.ok) {
+      const cfg = await r.json();
+      botUsername = cfg.bot_username || '';
+    }
+  } catch(e) {}
+
+  await loadData();
 }
 
 function showEmpty() {

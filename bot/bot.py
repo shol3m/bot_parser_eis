@@ -116,7 +116,7 @@ PROMPTS_PATH  = CONFIG_DIR / "prompts.json"
 # UTC+3 (Москва) для планировщика
 MSK = datetime.timezone(datetime.timedelta(hours=3))
 
-def _build_main_menu(webapp_url: str | None = None) -> ReplyKeyboardMarkup:
+def _build_main_menu(webapp_url: str | None = None, preset_name: str = "") -> ReplyKeyboardMarkup:
     app_btn = (
         KeyboardButton("🌐 Приложение", web_app=WebAppInfo(url=webapp_url))
         if webapp_url else "🌐 Приложение"
@@ -124,12 +124,18 @@ def _build_main_menu(webapp_url: str | None = None) -> ReplyKeyboardMarkup:
     rows = [
         ["🔍 Найти закупки", app_btn],
         ["⚙️ Фильтры поиска", "🔔 Подписки"],
-        ["⏰ Расписание", "🤖 Настройки анализа"],
-        ["📊 Статус", "❓ Помощь"],
+        ["⏰ Расписание", "❓ Помощь"],
     ]
-    return ReplyKeyboardMarkup(rows, resize_keyboard=True, input_field_placeholder="Выберите раздел…")
+    placeholder = f"Пресет: {preset_name}" if preset_name and preset_name != "default" else "Выберите раздел…"
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, input_field_placeholder=placeholder)
 
 MAIN_MENU = _build_main_menu()
+
+def _current_main_menu() -> ReplyKeyboardMarkup:
+    """Возвращает главное меню с актуальным именем активного пресета."""
+    data = load_presets()
+    preset_name = data.get("active", "default")
+    return _build_main_menu(WEBAPP_URL, preset_name)
 
 HELP_TEXT = (
     "📖 *Инструкция по работе с ботом*\n\n"
@@ -300,6 +306,14 @@ def _filter_keyboard(draft: dict, presets: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+async def _safe_edit(msg, text: str, reply_markup=None) -> None:
+    """Редактирует сообщение, игнорируя ошибки сети и дублирующие правки."""
+    try:
+        await msg.edit_text(text, reply_markup=reply_markup)
+    except (BadRequest, TimedOut, NetworkError):
+        pass
+
+
 async def _refresh_filter_msg(query, context, note: str = "") -> None:
     """Обновляет уже отправленное меню фильтров."""
     data = load_presets()
@@ -317,8 +331,8 @@ async def _refresh_filter_msg(query, context, note: str = "") -> None:
 
 # ── Парсер + анализ (через оркестратор) ───────────────────────────────────────
 
-def _fetch_with_filters(filters: dict, stop_event=None) -> list[dict]:
-    return fetch_contracts(filters, stop_event=stop_event)
+def _fetch_with_filters(filters: dict, stop_event=None, progress_cb=None) -> list[dict]:
+    return fetch_contracts(filters, stop_event=stop_event, progress_cb=progress_cb)
 
 
 
@@ -482,7 +496,7 @@ async def _send_welcome(update: Update) -> None:
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup([inline_row]),
     )
-    await update.message.reply_text("Выберите раздел:", reply_markup=MAIN_MENU)
+    await update.message.reply_text("Выберите раздел:", reply_markup=_current_main_menu())
 
 
 async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -779,7 +793,10 @@ async def callback_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif sub == "apply":
         context.user_data["pending_filter"] = deepcopy(draft)
         await _qanswer(query, "✅ Фильтры применены")
-        await query.message.reply_text("✅ Фильтры готовы. Запустите /fetch для поиска.")
+        await query.message.reply_text(
+            "✅ Фильтры готовы. Запустите /fetch или нажмите 🔍 Найти закупки.",
+            reply_markup=_current_main_menu(),
+        )
 
 
 async def _show_presets_menu(query, context) -> None:
@@ -832,6 +849,11 @@ async def callback_preset(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             context.user_data["draft"] = deepcopy(data["presets"][name])
             context.user_data.pop("pending_filter", None)
             await _refresh_filter_msg(query, context, note=f"Пресет «{name}» загружен")
+            await query.message.reply_text(
+                f"✅ Активен пресет: *{name}*",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=_current_main_menu(),
+            )
 
     elif sub == "del" and len(parts) == 3:
         name = parts[2]
@@ -1023,28 +1045,34 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         date_str = _parse_date_arg(context.args)
         filters["date_from"] = filters["date_to"] = date_str
 
+    filter_summary = _filter_summary(filters)
+    stop_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 Остановить", callback_data="fetch:stop")]])
+
     status_msg = await update.message.reply_text(
-        f"🔍 Ищу закупки...\n{_filter_summary(filters)}\n\nЭто займёт 1–2 минуты.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🛑 Остановить", callback_data="fetch:stop"),
-        ]]),
+        f"🔍 Ищу закупки...\n{filter_summary}\n\nЭто займёт 1–2 минуты.",
+        reply_markup=stop_kb,
     )
     context.user_data["fetch_status_msg_id"] = status_msg.message_id
 
     stop_event = threading.Event()
     context.user_data["fetch_stop_event"] = stop_event
 
-    loop   = asyncio.get_event_loop()
-    future = loop.run_in_executor(None, _fetch_with_filters, filters, stop_event)
+    loop = asyncio.get_event_loop()
+
+    def _progress(found: int, page: int, total_pages: int) -> None:
+        text = f"🔍 Страница {page}/{total_pages} · найдено {found}\n{filter_summary}"
+        asyncio.run_coroutine_threadsafe(
+            _safe_edit(status_msg, text, stop_kb),
+            loop,
+        )
+
+    future = loop.run_in_executor(None, _fetch_with_filters, filters, stop_event, _progress)
     context.user_data["fetch_future"] = future
 
     try:
         contracts = await future
     except asyncio.CancelledError:
-        try:
-            await status_msg.edit_text("🛑 Поиск остановлен.")
-        except (BadRequest, TimedOut, NetworkError):
-            pass
+        await _safe_edit(status_msg, "🛑 Поиск остановлен.")
         return
     finally:
         context.user_data.pop("fetch_future", None)
@@ -1063,18 +1091,12 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         c["_db_id"] = db_id
 
     if stop_event.is_set():
-        msg = f"🛑 Поиск остановлен. Найдено: {len(contracts)}" if contracts else "🛑 Поиск остановлен."
-        try:
-            await status_msg.edit_text(msg)
-        except (BadRequest, TimedOut, NetworkError):
-            pass
+        msg = f"🛑 Остановлено. Найдено: {len(contracts)}" if contracts else "🛑 Поиск остановлен."
+        await _safe_edit(status_msg, msg)
         if not contracts:
             return
     else:
-        try:
-            await status_msg.edit_text(f"🔍 Поиск завершён.\n{_filter_summary(filters)}")
-        except (BadRequest, TimedOut, NetworkError):
-            pass
+        await _safe_edit(status_msg, f"✅ Поиск завершён · {len(contracts)} закупок\n{filter_summary}")
         if not contracts:
             await update.message.reply_text("Закупок по текущим фильтрам не найдено.")
             return
@@ -1839,10 +1861,17 @@ def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
     """Сохраняет результаты поиска в webapp/data_{chat_id}.json для Mini App."""
     if not WEBAPP_DIR.exists():
         return
+    presets_data    = load_presets()
+    active_name     = presets_data.get("active", "default")
+    active_filter   = presets_data["presets"].get(active_name, DEFAULT_FILTER)
+    preset_names    = list(presets_data["presets"].keys())
     payload = {
-        "chat_id":      chat_id,
-        "bot_username": BOT_USERNAME,
-        "date":         datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "chat_id":           chat_id,
+        "bot_username":      BOT_USERNAME,
+        "date":              datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "active_preset":     active_name,
+        "active_filter":     active_filter,
+        "presets":           preset_names,
         "contracts": [
             {
                 "id":            c.get("_db_id") or c.get("id"),
@@ -1851,6 +1880,8 @@ def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
                 "price":         c.get("price", ""),
                 "customer":      c.get("customer", ""),
                 "url":           c.get("url", ""),
+                "date_updated":  c.get("date_updated", ""),
+                "date_end":      c.get("date_end", ""),
                 "quick_score":   c.get("quick_score") or 0,
                 "quick_comment": c.get("quick_comment") or "",
             }
@@ -1894,13 +1925,12 @@ def _write_webapp_subs(chat_id: int) -> None:
 
 def main():
     MENU_COMMANDS.update({
-        "🔍 Найти закупки":       cmd_fetch,
-        "⚙️ Фильтры поиска":      cmd_filters,
-        "🔔 Подписки":            cmd_watch,
-        "🤖 Настройки анализа":   cmd_prompt,
-        "⏰ Расписание":          cmd_schedule,
-        "📊 Статус":              cmd_status,
-        "❓ Помощь":              cmd_help,
+        "🔍 Найти закупки":  cmd_fetch,
+        "⚙️ Фильтры поиска": cmd_filters,
+        "🔔 Подписки":       cmd_watch,
+        "⏰ Расписание":     cmd_schedule,
+        "❓ Помощь":         cmd_help,
+        # Доступны только через команды: /status, /prompt
     })
     init_db()
 

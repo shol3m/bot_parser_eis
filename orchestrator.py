@@ -15,9 +15,10 @@ def fetch_contracts(
     filters: dict,
     max_pages: int = 0,
     stop_event: threading.Event | None = None,
+    progress_cb=None,
 ) -> list[dict]:
     """Шаг 1: парсинг закупок. Возвращает список закупок без записи в БД."""
-    return parse(filters, max_pages=max_pages, stop_event=stop_event)
+    return parse(filters, max_pages=max_pages, stop_event=stop_event, progress_cb=progress_cb)
 
 
 def analyze_contract(

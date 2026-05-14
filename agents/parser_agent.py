@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from parsers.zakupki import run as _parse
 
 
-def run(filters: dict, max_pages: int = 0, stop_event: threading.Event | None = None) -> list[dict]:
+def run(filters: dict, max_pages: int = 0, stop_event: threading.Event | None = None, progress_cb=None) -> list[dict]:
     """
     Запускает парсер с переданными фильтрами.
 
@@ -49,7 +49,7 @@ def run(filters: dict, max_pages: int = 0, stop_event: threading.Event | None = 
         for law_val in ("44", "223"):
             if stop_event and stop_event.is_set():
                 break
-            result = _run_single(dict(filters, law=law_val), max_pages, stop_event)
+            result = _run_single(dict(filters, law=law_val), max_pages, stop_event, progress_cb)
             for c in result:
                 key = c.get("number") or c.get("url", "")
                 if key not in seen:
@@ -58,10 +58,10 @@ def run(filters: dict, max_pages: int = 0, stop_event: threading.Event | None = 
                     combined.append(c)
         return combined
 
-    return _run_single(filters, max_pages, stop_event)
+    return _run_single(filters, max_pages, stop_event, progress_cb)
 
 
-def _run_single(filters: dict, max_pages: int, stop_event) -> list[dict]:
+def _run_single(filters: dict, max_pages: int, stop_event, progress_cb=None) -> list[dict]:
     import tempfile
     import os
 
@@ -69,7 +69,7 @@ def _run_single(filters: dict, max_pages: int, stop_event) -> list[dict]:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fp:
             json.dump(filters, fp, ensure_ascii=False)
-        results = _parse(config_path=tmp_path, max_pages=max_pages, stop_event=stop_event)
+        results = _parse(config_path=tmp_path, max_pages=max_pages, stop_event=stop_event, progress_cb=progress_cb)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
