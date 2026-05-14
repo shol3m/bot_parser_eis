@@ -6,6 +6,8 @@ cloudflared.exe
 
 # База данных
 data/state.db
+data/state.db-shm
+data/state.db-wal
 data/contracts/
 data/documents/
 
