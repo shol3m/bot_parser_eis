@@ -1866,7 +1866,7 @@ def _start_webapp_server() -> None:
 
 
 def _start_cloudflared_tunnel() -> str | None:
-    """Запускает cloudflared quick tunnel, возвращает публичный HTTPS URL."""
+    """Запускает cloudflared quick tunnel в фоне, возвращает URL через очередь."""
     if not CLOUDFLARED_PATH.exists():
         print("cloudflared.exe не найден — Mini App недоступен")
         return None
@@ -1882,29 +1882,34 @@ def _start_cloudflared_tunnel() -> str | None:
             errors="replace",
         )
 
+        import queue, time
+        url_queue: queue.Queue = queue.Queue()
         url_pattern = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
-        import time
-        deadline = time.time() + 30
-        url = None
-        while time.time() < deadline:
-            line = proc.stderr.readline()
-            if not line:
-                break
-            m = url_pattern.search(line)
-            if m:
-                url = m.group(0)
-                break
+
+        def _reader():
+            try:
+                for line in proc.stderr:
+                    m = url_pattern.search(line)
+                    if m:
+                        url_queue.put(m.group(0))
+                        return
+            except Exception:
+                pass
+            url_queue.put(None)
+
+        threading.Thread(target=_reader, daemon=True).start()
+
+        try:
+            url = url_queue.get(timeout=30)
+        except queue.Empty:
+            url = None
 
         if url:
             print(f"Mini App: {url}")
-            # Дочитываем stderr в фоне чтобы буфер не переполнился
-            threading.Thread(
-                target=lambda: [proc.stderr.readline() for _ in iter(int, 1)],
-                daemon=True,
-            ).start()
             return url
 
-        print("Не удалось получить URL тоннеля за 30 сек")
+        print("Не удалось получить URL тоннеля за 30 сек — Mini App отключён")
+        proc.kill()
         return None
     except Exception as e:
         print(f"Ошибка запуска cloudflared: {e}")
@@ -1959,8 +1964,6 @@ def main():
             HTTPXRequest(httpx_kwargs={"trust_env": False}, **req_kwargs)
         )
 
-    app = builder.build()
-
     # Сохраняем username бота для deep links в Mini App
     async def _post_init(application) -> None:
         global BOT_USERNAME
@@ -1977,7 +1980,8 @@ def main():
                 pass
         print(f"Бот: @{BOT_USERNAME}")
 
-    app.post_init = _post_init
+    builder.post_init(_post_init)
+    app = builder.build()
 
     # Восстанавливаем расписание из сохранённого конфига
     sched_time = cfg.get("schedule_time")
