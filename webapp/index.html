@@ -516,41 +516,25 @@ function analyzeContract(dbId) {
   tg.sendData(JSON.stringify({ action: 'analyze', contract_id: dbId }));
 }
 
-// ── Применить фильтры ──────────────────────────────────────────
+// ── Применить фильтры (клиентская фильтрация) ─────────────────
 document.getElementById('apply-filters').addEventListener('click', () => {
-  const filters = {
-    action: 'search',
-    law: activeLaw,
-    date: activeDate,
-    keywords: document.getElementById('kw-input').value.trim(),
-    price_from: document.getElementById('price-from').value || null,
-    price_to:   document.getElementById('price-to').value   || null,
-  };
+  const kw       = document.getElementById('kw-input').value.trim().toLowerCase();
+  const priceFrom = parseFloat(document.getElementById('price-from').value) || 0;
+  const priceTo   = parseFloat(document.getElementById('price-to').value)   || Infinity;
+
+  const filtered = allContracts.filter(c => {
+    const matchKw = !kw || (c.subject||'').toLowerCase().includes(kw) || (c.customer||'').toLowerCase().includes(kw);
+    const price   = parseFloat((c.price||'').replace(/[^\d.]/g, '')) || 0;
+    const matchP  = (!priceFrom || price >= priceFrom) && (!isFinite(priceTo) || price <= priceTo);
+    return matchKw && matchP;
+  });
+
   // Переключаемся на результаты
   document.querySelectorAll('.tab, .page').forEach(el => el.classList.remove('active'));
   document.querySelector('[data-tab="results"]').classList.add('active');
   document.getElementById('tab-results').classList.add('active');
-  // Показываем лоадер
-  document.getElementById('results-list').innerHTML = `<div class="loader-wrap">
-    <div class="spinner"></div>
-    <div class="loader-text">Ищу закупки…</div>
-  </div>`;
-  // Отправляем в бот
-  tg.sendData(JSON.stringify(filters));
+  renderContracts(filtered);
 });
-
-// ── Получение данных от бота ───────────────────────────────────
-function loadData(data) {
-  if (data.contracts) {
-    allContracts = data.contracts;
-    const sub = `${data.contracts.length} закупок · ${data.date || 'сегодня'}`;
-    document.getElementById('header-sub').textContent = sub;
-    renderContracts(allContracts);
-  }
-  if (data.subs) {
-    renderSubs(data.subs);
-  }
-}
 
 function renderSubs(subs) {
   const el = document.getElementById('subs-list');
@@ -574,25 +558,48 @@ function renderSubs(subs) {
   `).join('');
 }
 
-// ── Инициализация с данными из бота ───────────────────────────
-try {
-  const startParam = tg.initDataUnsafe?.start_param;
-  if (startParam) {
-    const data = JSON.parse(decodeURIComponent(startParam));
-    loadData(data);
-  } else {
-    // Показываем пустое состояние если нет данных
-    document.getElementById('header-sub').textContent = 'Откройте из бота';
-    document.getElementById('results-list').innerHTML = `<div class="empty">
-      <div class="empty-icon">📋</div>
-      <div class="empty-title">Нет данных</div>
-      <div class="empty-text">Запустите поиск в боте — результаты появятся здесь</div>
-    </div>`;
+// ── Инициализация: загружаем данные с сервера ─────────────────
+async function init() {
+  // Загружаем результаты поиска
+  try {
+    const res = await fetch('./data.json?t=' + Date.now());
+    if (res.ok) {
+      const data = await res.json();
+      allContracts = data.contracts || [];
+      const sub = `${allContracts.length} закупок · ${data.date || ''}`;
+      document.getElementById('header-sub').textContent = sub;
+      renderContracts(allContracts);
+    } else {
+      showEmpty();
+    }
+  } catch(e) {
+    showEmpty();
+  }
+
+  // Загружаем подписки
+  try {
+    const res = await fetch('./subs.json?t=' + Date.now());
+    if (res.ok) {
+      const subs = await res.json();
+      renderSubs(subs);
+    } else {
+      renderSubs([]);
+    }
+  } catch(e) {
     renderSubs([]);
   }
-} catch(e) {
-  console.error(e);
 }
+
+function showEmpty() {
+  document.getElementById('header-sub').textContent = 'Нет данных';
+  document.getElementById('results-list').innerHTML = `<div class="empty">
+    <div class="empty-icon">🔍</div>
+    <div class="empty-title">Результатов нет</div>
+    <div class="empty-text">Запустите поиск в боте — результаты появятся здесь</div>
+  </div>`;
+}
+
+init();
 
 // Тема меняется динамически
 tg.onEvent('themeChanged', () => {

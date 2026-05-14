@@ -1026,9 +1026,19 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data["results"] = contracts
     context.user_data["pg_idx"]  = 0
 
+    _write_webapp_contracts(contracts, update.effective_chat.id)
+
+    found_row = [f"Найдено *{len(contracts)}* закупок. Листайте кнопками ◀ ▶"]
+    webapp_kb = None
+    if WEBAPP_URL:
+        webapp_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🌐 Открыть в приложении", web_app=WebAppInfo(url=WEBAPP_URL))
+        ]])
+
     await update.message.reply_text(
-        f"Найдено *{len(contracts)}* закупок. Листайте кнопками ◀ ▶",
+        found_row[0],
         parse_mode=ParseMode.MARKDOWN,
+        reply_markup=webapp_kb,
     )
     await update.message.reply_text(
         _card_text(contracts, 0),
@@ -1413,6 +1423,7 @@ async def cmd_watch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     chat_id = update.effective_chat.id
     watches = list_watches(chat_id)
+    _write_webapp_subs(chat_id)
     if watches:
         text = f"🔔 *Подписки на закупки*\n\nАктивных подписок: {len(watches)}\nВыберите или создайте новую:"
     else:
@@ -1762,6 +1773,60 @@ async def _run_detail_analysis(update: Update, context: ContextTypes.DEFAULT_TYP
                 InlineKeyboardButton("🔗 Открыть на ЕИС", url=url or "https://zakupki.gov.ru")
             ]]) if url else None,
         )
+
+
+# ── Mini App: данные для webapp ───────────────────────────────────────────────
+
+def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
+    """Сохраняет результаты поиска в webapp/data.json для Mini App."""
+    if not WEBAPP_DIR.exists():
+        return
+    payload = {
+        "chat_id":   chat_id,
+        "date":      datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "contracts": [
+            {
+                "id":            c.get("_db_id") or c.get("id"),
+                "number":        c.get("number", ""),
+                "subject":       c.get("subject", ""),
+                "price":         c.get("price", ""),
+                "customer":      c.get("customer", ""),
+                "url":           c.get("url", ""),
+                "quick_score":   c.get("quick_score") or 0,
+                "quick_comment": c.get("quick_comment") or "",
+            }
+            for c in contracts
+        ],
+    }
+    try:
+        (WEBAPP_DIR / "data.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as e:
+        print(f"Ошибка записи webapp/data.json: {e}")
+
+
+def _write_webapp_subs(chat_id: int) -> None:
+    """Сохраняет подписки пользователя в webapp/subs.json для Mini App."""
+    if not WEBAPP_DIR.exists():
+        return
+    try:
+        watches = list_watches(chat_id)
+        payload = [
+            {
+                "id":         w["id"],
+                "name":       w["name"],
+                "interval_h": w["interval_h"],
+                "active":     bool(w["active"]),
+                "last_run":   w.get("last_run") or "",
+            }
+            for w in watches
+        ]
+        (WEBAPP_DIR / "subs.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as e:
+        print(f"Ошибка записи webapp/subs.json: {e}")
 
 
 # ── Mini App: HTTP-сервер + cloudflared тоннель ────────────────────────────────
