@@ -30,15 +30,12 @@ _ssl._create_default_https_context = _patched_ctx
 import json
 import sys
 import asyncio
-import subprocess
-import shutil
 import platform
 import tempfile
 import os
 import re
 import datetime
 import threading
-import http.server
 from copy import deepcopy
 from pathlib import Path
 
@@ -51,7 +48,6 @@ from telegram.ext import (
 )
 WEBAPP_URL: str | None = None
 BOT_USERNAME: str = ""
-WEBAPP_PORT = 8742
 WEBAPP_DIR = Path(__file__).parent.parent / "webapp"
 
 GITHUB_REPO  = "shol3m/bot_parser_eis"
@@ -1892,111 +1888,6 @@ def _write_webapp_subs(chat_id: int) -> None:
         print(f"Ошибка записи webapp/subs_{chat_id}.json: {e}")
 
 
-# ── Mini App: HTTP-сервер + cloudflared тоннель ────────────────────────────────
-
-def _start_webapp_server() -> None:
-    """Запускает HTTP-сервер для раздачи webapp/ в отдельном потоке."""
-    if not WEBAPP_DIR.exists():
-        return
-
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, directory=str(WEBAPP_DIR), **kwargs)
-        def end_headers(self):
-            # CORS нужен, т.к. HTML грузится с GitHub Pages, данные — с тоннеля
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Cache-Control", "no-store")
-            super().end_headers()
-        def log_message(self, *args):
-            pass
-
-    server = http.server.HTTPServer(("127.0.0.1", WEBAPP_PORT), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"Mini App HTTP-сервер запущен на порту {WEBAPP_PORT}")
-
-
-def _start_tunnel() -> str | None:
-    """
-    Запускает тоннель и возвращает публичный URL.
-
-    Приоритет:
-    1. ngrok со статическим доменом из bot_config.json (ngrok_domain) — URL постоянный
-    2. cloudflared quick tunnel — URL меняется при рестарте
-    """
-    import queue
-
-    cfg = load_bot_cfg()
-    ngrok_domain = cfg.get("ngrok_domain", "").strip()
-
-    # ── ngrok с постоянным доменом ─────────────────────────────────
-    if ngrok_domain:
-        ngrok_bin = _find_ngrok()
-        if ngrok_bin:
-            try:
-                subprocess.Popen(
-                    [str(ngrok_bin), "http",
-                     f"--domain={ngrok_domain}",
-                     "--log=false",
-                     str(WEBAPP_PORT)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                public_url = f"https://{ngrok_domain}"
-                print(f"Mini App (ngrok): {public_url}")
-                return public_url
-            except Exception as e:
-                print(f"Ошибка запуска ngrok: {e}")
-        else:
-            print("ngrok не найден. Положите ngrok.exe в папку проекта или добавьте в PATH.")
-
-    # ── cloudflared quick tunnel (fallback) ───────────────────────
-    cf = _find_cloudflared()
-    if not cf:
-        print("Тоннель не настроен. Добавьте ngrok_domain в bot_config.json или положите cloudflared рядом с ботом.")
-        return None
-
-    try:
-        proc = subprocess.Popen(
-            [str(cf), "tunnel", "--url", f"http://127.0.0.1:{WEBAPP_PORT}",
-             "--no-autoupdate"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-
-        url_queue: queue.Queue = queue.Queue()
-        url_pattern = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
-
-        def _reader():
-            try:
-                for line in proc.stderr:
-                    m = url_pattern.search(line)
-                    if m:
-                        url_queue.put(m.group(0))
-                        return
-            except Exception:
-                pass
-            url_queue.put(None)
-
-        threading.Thread(target=_reader, daemon=True).start()
-
-        try:
-            url = url_queue.get(timeout=30)
-        except queue.Empty:
-            url = None
-
-        if url:
-            print(f"Mini App (cloudflared quick): {url}")
-            return url
-
-        print("Не удалось получить URL тоннеля за 30 сек")
-        proc.kill()
-        return None
-    except Exception as e:
-        print(f"Ошибка запуска cloudflared: {e}")
-        return None
 
 
 # ── main ───────────────────────────────────────────────────────────────────────
