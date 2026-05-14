@@ -39,7 +39,6 @@ import re
 import datetime
 import threading
 import http.server
-import urllib.parse
 from copy import deepcopy
 from pathlib import Path
 
@@ -54,8 +53,6 @@ WEBAPP_URL: str | None = None  # заполняется при запуске т
 BOT_USERNAME: str = ""
 WEBAPP_PORT = 8742
 WEBAPP_DIR = Path(__file__).parent.parent / "webapp"
-# Постоянный URL Mini App на GitHub Pages (не меняется при перезапуске)
-GITHUB_PAGES_URL = "https://shol3m.github.io/bot_parser_eis/"
 
 
 def _find_cloudflared() -> Path | None:
@@ -70,12 +67,9 @@ def _find_cloudflared() -> Path | None:
     return Path(found) if found else None
 
 
-def _webapp_button_url() -> str:
-    """URL для кнопки Mini App: GitHub Pages + текущий тоннель как ?api= параметр."""
-    if WEBAPP_URL:
-        api_param = urllib.parse.quote(WEBAPP_URL, safe="")
-        return f"{GITHUB_PAGES_URL}?api={api_param}"
-    return GITHUB_PAGES_URL
+def _webapp_button_url() -> str | None:
+    """URL для кнопки Mini App."""
+    return WEBAPP_URL
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, TimedOut, NetworkError
 from telegram.request import HTTPXRequest
@@ -448,7 +442,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def _send_welcome(update: Update) -> None:
     name = update.effective_user.first_name or "Добро пожаловать"
     inline_row = [InlineKeyboardButton("📖 Как пользоваться", callback_data="help:show")]
-    inline_row.append(InlineKeyboardButton("🌐 Открыть приложение", web_app=WebAppInfo(url=_webapp_button_url())))
+    if WEBAPP_URL:
+        inline_row.append(InlineKeyboardButton("🌐 Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL)))
     await update.message.reply_text(
         f"👋 *{name}*\n\n"
         "Мониторинг госзакупок по 44‑ФЗ и 223‑ФЗ.\n\n"
@@ -1066,9 +1061,11 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _write_webapp_contracts(contracts, update.effective_chat.id)
 
     found_row = [f"Найдено *{len(contracts)}* закупок. Листайте кнопками ◀ ▶"]
-    webapp_kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🌐 Открыть в приложении", web_app=WebAppInfo(url=_webapp_button_url()))
-    ]])
+    webapp_kb = None
+    if WEBAPP_URL:
+        webapp_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🌐 Открыть в приложении", web_app=WebAppInfo(url=WEBAPP_URL))
+        ]])
 
     await update.message.reply_text(
         found_row[0],
@@ -1888,11 +1885,46 @@ def _start_webapp_server() -> None:
     print(f"Mini App HTTP-сервер запущен на порту {WEBAPP_PORT}")
 
 
-def _start_cloudflared_tunnel() -> str | None:
-    """Запускает cloudflared quick tunnel в фоне, возвращает URL через очередь."""
+def _start_tunnel() -> str | None:
+    """
+    Запускает тоннель и возвращает публичный URL.
+
+    Приоритет:
+    1. ngrok со статическим доменом из bot_config.json (ngrok_domain) — URL постоянный
+    2. cloudflared quick tunnel — URL меняется при рестарте
+    """
+    import queue
+
+    cfg = load_bot_cfg()
+    ngrok_domain = cfg.get("ngrok_domain", "").strip()
+
+    # ── ngrok с постоянным доменом ─────────────────────────────────
+    if ngrok_domain:
+        ngrok_bin = shutil.which("ngrok")
+        if ngrok_bin:
+            try:
+                subprocess.Popen(
+                    [ngrok_bin, "http",
+                     f"--domain={ngrok_domain}",
+                     f"--log=false",
+                     str(WEBAPP_PORT)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                public_url = f"https://{ngrok_domain}"
+                print(f"Mini App (ngrok): {public_url}")
+                return public_url
+            except Exception as e:
+                print(f"Ошибка запуска ngrok: {e}")
+        else:
+            # ngrok не найден, но домен задан — URL заранее известен
+            print("ngrok не найден в PATH, но ngrok_domain задан — Mini App URL будет использован как есть")
+            return f"https://{ngrok_domain}"
+
+    # ── cloudflared quick tunnel (fallback) ───────────────────────
     cf = _find_cloudflared()
     if not cf:
-        print("cloudflared не найден — данные Mini App недоступны извне (HTML грузится с GitHub Pages)")
+        print("Тоннель не настроен. Добавьте ngrok_domain в bot_config.json или положите cloudflared рядом с ботом.")
         return None
 
     try:
@@ -1906,7 +1938,6 @@ def _start_cloudflared_tunnel() -> str | None:
             errors="replace",
         )
 
-        import queue, time
         url_queue: queue.Queue = queue.Queue()
         url_pattern = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
@@ -1929,10 +1960,10 @@ def _start_cloudflared_tunnel() -> str | None:
             url = None
 
         if url:
-            print(f"Mini App: {url}")
+            print(f"Mini App (cloudflared quick): {url}")
             return url
 
-        print("Не удалось получить URL тоннеля за 30 сек — Mini App отключён")
+        print("Не удалось получить URL тоннеля за 30 сек")
         proc.kill()
         return None
     except Exception as e:
@@ -1958,7 +1989,7 @@ def main():
     global WEBAPP_URL
     if WEBAPP_DIR.exists():
         _start_webapp_server()
-        tunnel_url = _start_cloudflared_tunnel()
+        tunnel_url = _start_tunnel()
         if tunnel_url:
             WEBAPP_URL = tunnel_url
 
