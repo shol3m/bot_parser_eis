@@ -11,7 +11,7 @@
 ```json
 {
   "token": "...",                        // токен Telegram-бота
-  "chat_id": 422923134,                  // chat_id владельца (устанавливается /start)
+  "chat_id": 123456789,                  // chat_id владельца (устанавливается /start)
   "proxy": "socks5://127.0.0.1:12334",  // SOCKS5-прокси (Hiddify)
   "schedule_time": "10:00"              // время автосбора МСК (устанавливается /schedule)
 }
