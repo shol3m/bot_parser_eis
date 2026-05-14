@@ -44,27 +44,53 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, WebAppInfo
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ContextTypes, filters as tg_filters,
 )
-WEBAPP_URL: str | None = None  # заполняется при запуске тоннеля
+WEBAPP_URL: str | None = None
 BOT_USERNAME: str = ""
 WEBAPP_PORT = 8742
 WEBAPP_DIR = Path(__file__).parent.parent / "webapp"
 
+GITHUB_REPO  = "shol3m/bot_parser_eis"
+GITHUB_PAGES = "https://shol3m.github.io/bot_parser_eis"
 
-def _find_cloudflared() -> Path | None:
-    """Ищет бинарник cloudflared — локальный или в PATH."""
-    for p in [
-        Path(__file__).parent.parent / "cloudflared.exe",
-        Path(__file__).parent.parent / "cloudflared",
-    ]:
-        if p.exists():
-            return p
-    found = shutil.which("cloudflared")
-    return Path(found) if found else None
+
+def _github_push_file(token: str, repo_path: str, content: bytes, message: str) -> None:
+    """Пушит файл в репозиторий GitHub через API (в фоновом потоке)."""
+    import urllib.request, base64
+    api = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{repo_path}"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json",
+    }
+    # получаем текущий SHA файла (нужен для обновления)
+    sha = None
+    try:
+        req = urllib.request.Request(api, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            sha = json.loads(r.read())["sha"]
+    except Exception:
+        pass
+    body = {"message": message, "content": base64.b64encode(content).decode()}
+    if sha:
+        body["sha"] = sha
+    try:
+        req = urllib.request.Request(api, data=json.dumps(body).encode(), headers=headers, method="PUT")
+        urllib.request.urlopen(req, timeout=15)
+    except Exception as e:
+        print(f"GitHub push error ({repo_path}): {e}")
+
+
+def _github_push_async(repo_path: str, content: bytes, message: str = "update") -> None:
+    """Запускает _github_push_file в фоновом потоке, не блокируя бота."""
+    token = load_bot_cfg().get("github_token", "").strip()
+    if not token:
+        return
+    threading.Thread(target=_github_push_file, args=(token, repo_path, content, message), daemon=True).start()
 
 
 def _webapp_button_url() -> str | None:
@@ -94,9 +120,13 @@ PROMPTS_PATH  = CONFIG_DIR / "prompts.json"
 # UTC+3 (Москва) для планировщика
 MSK = datetime.timezone(datetime.timedelta(hours=3))
 
-def _build_main_menu() -> ReplyKeyboardMarkup:
+def _build_main_menu(webapp_url: str | None = None) -> ReplyKeyboardMarkup:
+    app_btn = (
+        KeyboardButton("🌐 Приложение", web_app=WebAppInfo(url=webapp_url))
+        if webapp_url else "🌐 Приложение"
+    )
     rows = [
-        ["🔍 Найти закупки"],
+        ["🔍 Найти закупки", app_btn],
         ["⚙️ Фильтры поиска", "🔔 Подписки"],
         ["⏰ Расписание", "🤖 Настройки анализа"],
         ["📊 Статус", "❓ Помощь"],
@@ -1832,9 +1862,9 @@ def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
         ],
     }
     try:
-        (WEBAPP_DIR / f"data_{chat_id}.json").write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        (WEBAPP_DIR / f"data_{chat_id}.json").write_bytes(content)
+        _github_push_async(f"webapp/data_{chat_id}.json", content)
     except Exception as e:
         print(f"Ошибка записи webapp/data_{chat_id}.json: {e}")
 
@@ -1855,9 +1885,9 @@ def _write_webapp_subs(chat_id: int) -> None:
             }
             for w in watches
         ]
-        (WEBAPP_DIR / f"subs_{chat_id}.json").write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        (WEBAPP_DIR / f"subs_{chat_id}.json").write_bytes(content)
+        _github_push_async(f"webapp/subs_{chat_id}.json", content)
     except Exception as e:
         print(f"Ошибка записи webapp/subs_{chat_id}.json: {e}")
 
@@ -1900,13 +1930,13 @@ def _start_tunnel() -> str | None:
 
     # ── ngrok с постоянным доменом ─────────────────────────────────
     if ngrok_domain:
-        ngrok_bin = shutil.which("ngrok")
+        ngrok_bin = _find_ngrok()
         if ngrok_bin:
             try:
                 subprocess.Popen(
-                    [ngrok_bin, "http",
+                    [str(ngrok_bin), "http",
                      f"--domain={ngrok_domain}",
-                     f"--log=false",
+                     "--log=false",
                      str(WEBAPP_PORT)],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -1917,9 +1947,7 @@ def _start_tunnel() -> str | None:
             except Exception as e:
                 print(f"Ошибка запуска ngrok: {e}")
         else:
-            # ngrok не найден, но домен задан — URL заранее известен
-            print("ngrok не найден в PATH, но ngrok_domain задан — Mini App URL будет использован как есть")
-            return f"https://{ngrok_domain}"
+            print("ngrok не найден. Положите ngrok.exe в папку проекта или добавьте в PATH.")
 
     # ── cloudflared quick tunnel (fallback) ───────────────────────
     cf = _find_cloudflared()
@@ -1985,13 +2013,11 @@ def main():
     })
     init_db()
 
-    # Запускаем Mini App сервер + тоннель
-    global WEBAPP_URL
-    if WEBAPP_DIR.exists():
-        _start_webapp_server()
-        tunnel_url = _start_tunnel()
-        if tunnel_url:
-            WEBAPP_URL = tunnel_url
+    # Mini App на GitHub Pages — туннель не нужен
+    global WEBAPP_URL, MAIN_MENU
+    WEBAPP_URL = GITHUB_PAGES
+    MAIN_MENU = _build_main_menu(WEBAPP_URL)
+    print(f"Mini App: {WEBAPP_URL}")
 
     cfg   = load_bot_cfg()
     token = cfg.get("token", "")
@@ -2024,11 +2050,11 @@ def main():
         BOT_USERNAME = me.username or ""
         if WEBAPP_DIR.exists():
             try:
-                cfg_file = WEBAPP_DIR / "config.json"
-                cfg_file.write_text(
-                    json.dumps({"bot_username": BOT_USERNAME, "webapp_url": WEBAPP_URL or ""}, ensure_ascii=False),
-                    encoding="utf-8",
-                )
+                content = json.dumps(
+                    {"bot_username": BOT_USERNAME, "webapp_url": WEBAPP_URL or ""}, ensure_ascii=False
+                ).encode("utf-8")
+                (WEBAPP_DIR / "config.json").write_bytes(content)
+                _github_push_async("webapp/config.json", content)
             except Exception:
                 pass
         print(f"Бот: @{BOT_USERNAME}")

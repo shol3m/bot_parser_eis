@@ -3,7 +3,8 @@ name: Deploy Mini App to GitHub Pages
 on:
   push:
     branches: [main]
-    paths: [webapp/index.html]
+    paths: [webapp/]
+  workflow_dispatch:
 
 permissions:
   contents: read
