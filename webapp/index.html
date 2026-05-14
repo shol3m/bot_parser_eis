@@ -567,18 +567,42 @@ function renderSubs(subs) {
 
 // ── Инициализация: загружаем данные с сервера ─────────────────
 async function init() {
-  // Загружаем конфиг бота (username для deep links)
-  try {
-    const r = await fetch('./config.json?t=' + Date.now());
-    if (r.ok) {
-      const cfg = await r.json();
-      botUsername = cfg.bot_username || '';
-    }
-  } catch(e) {}
+  // ID текущего пользователя из Telegram WebApp
+  const userId = tg.initDataUnsafe?.user?.id || '';
 
-  // Загружаем результаты поиска
+  // URL бота-сервера передаётся как ?api= параметр (меняется при рестарте тоннеля)
+  const params = new URLSearchParams(location.search);
+  const apiBase = params.get('api');  // null если бот оффлайн или параметр не передан
+
+  // Загружаем конфиг бота (username для deep links)
+  if (apiBase) {
+    try {
+      const r = await fetch(`${apiBase}/config.json?t=${Date.now()}`);
+      if (r.ok) {
+        const cfg = await r.json();
+        botUsername = cfg.bot_username || '';
+      }
+    } catch(e) {}
+  }
+
+  if (!apiBase) {
+    // Бот оффлайн или ссылка устарела — показываем подсказку
+    document.getElementById('header-sub').textContent = 'Запустите поиск в боте';
+    document.getElementById('results-list').innerHTML = `<div class="empty">
+      <div class="empty-icon">📡</div>
+      <div class="empty-title">Бот не подключён</div>
+      <div class="empty-text">Нажмите «🔍 Найти закупки» в боте — после этого откройте приложение заново</div>
+    </div>`;
+    renderSubs([]);
+    return;
+  }
+
+  // Загружаем результаты поиска (файл конкретного пользователя)
   try {
-    const res = await fetch('./data.json?t=' + Date.now());
+    const url = userId
+      ? `${apiBase}/data_${userId}.json?t=${Date.now()}`
+      : `${apiBase}/data.json?t=${Date.now()}`;
+    const res = await fetch(url);
     if (res.ok) {
       const data = await res.json();
       allContracts = data.contracts || [];
@@ -592,9 +616,12 @@ async function init() {
     showEmpty();
   }
 
-  // Загружаем подписки
+  // Загружаем подписки (файл конкретного пользователя)
   try {
-    const res = await fetch('./subs.json?t=' + Date.now());
+    const url = userId
+      ? `${apiBase}/subs_${userId}.json?t=${Date.now()}`
+      : `${apiBase}/subs.json?t=${Date.now()}`;
+    const res = await fetch(url);
     if (res.ok) {
       const subs = await res.json();
       renderSubs(subs);

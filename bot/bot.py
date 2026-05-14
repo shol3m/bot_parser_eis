@@ -39,6 +39,7 @@ import re
 import datetime
 import threading
 import http.server
+import urllib.parse
 from copy import deepcopy
 from pathlib import Path
 
@@ -52,8 +53,29 @@ from telegram.ext import (
 WEBAPP_URL: str | None = None  # заполняется при запуске тоннеля
 BOT_USERNAME: str = ""
 WEBAPP_PORT = 8742
-CLOUDFLARED_PATH = Path(__file__).parent.parent / "cloudflared.exe"
 WEBAPP_DIR = Path(__file__).parent.parent / "webapp"
+# Постоянный URL Mini App на GitHub Pages (не меняется при перезапуске)
+GITHUB_PAGES_URL = "https://shol3m.github.io/bot_parser_eis/"
+
+
+def _find_cloudflared() -> Path | None:
+    """Ищет бинарник cloudflared — локальный или в PATH."""
+    for p in [
+        Path(__file__).parent.parent / "cloudflared.exe",
+        Path(__file__).parent.parent / "cloudflared",
+    ]:
+        if p.exists():
+            return p
+    found = shutil.which("cloudflared")
+    return Path(found) if found else None
+
+
+def _webapp_button_url() -> str:
+    """URL для кнопки Mini App: GitHub Pages + текущий тоннель как ?api= параметр."""
+    if WEBAPP_URL:
+        api_param = urllib.parse.quote(WEBAPP_URL, safe="")
+        return f"{GITHUB_PAGES_URL}?api={api_param}"
+    return GITHUB_PAGES_URL
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, TimedOut, NetworkError
 from telegram.request import HTTPXRequest
@@ -426,8 +448,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def _send_welcome(update: Update) -> None:
     name = update.effective_user.first_name or "Добро пожаловать"
     inline_row = [InlineKeyboardButton("📖 Как пользоваться", callback_data="help:show")]
-    if WEBAPP_URL:
-        inline_row.append(InlineKeyboardButton("🌐 Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL)))
+    inline_row.append(InlineKeyboardButton("🌐 Открыть приложение", web_app=WebAppInfo(url=_webapp_button_url())))
     await update.message.reply_text(
         f"👋 *{name}*\n\n"
         "Мониторинг госзакупок по 44‑ФЗ и 223‑ФЗ.\n\n"
@@ -1045,11 +1066,9 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _write_webapp_contracts(contracts, update.effective_chat.id)
 
     found_row = [f"Найдено *{len(contracts)}* закупок. Листайте кнопками ◀ ▶"]
-    webapp_kb = None
-    if WEBAPP_URL:
-        webapp_kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🌐 Открыть в приложении", web_app=WebAppInfo(url=WEBAPP_URL))
-        ]])
+    webapp_kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🌐 Открыть в приложении", web_app=WebAppInfo(url=_webapp_button_url()))
+    ]])
 
     await update.message.reply_text(
         found_row[0],
@@ -1794,7 +1813,7 @@ async def _run_detail_analysis(update: Update, context: ContextTypes.DEFAULT_TYP
 # ── Mini App: данные для webapp ───────────────────────────────────────────────
 
 def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
-    """Сохраняет результаты поиска в webapp/data.json для Mini App."""
+    """Сохраняет результаты поиска в webapp/data_{chat_id}.json для Mini App."""
     if not WEBAPP_DIR.exists():
         return
     payload = {
@@ -1816,15 +1835,15 @@ def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
         ],
     }
     try:
-        (WEBAPP_DIR / "data.json").write_text(
+        (WEBAPP_DIR / f"data_{chat_id}.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
     except Exception as e:
-        print(f"Ошибка записи webapp/data.json: {e}")
+        print(f"Ошибка записи webapp/data_{chat_id}.json: {e}")
 
 
 def _write_webapp_subs(chat_id: int) -> None:
-    """Сохраняет подписки пользователя в webapp/subs.json для Mini App."""
+    """Сохраняет подписки пользователя в webapp/subs_{chat_id}.json для Mini App."""
     if not WEBAPP_DIR.exists():
         return
     try:
@@ -1839,41 +1858,46 @@ def _write_webapp_subs(chat_id: int) -> None:
             }
             for w in watches
         ]
-        (WEBAPP_DIR / "subs.json").write_text(
+        (WEBAPP_DIR / f"subs_{chat_id}.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
     except Exception as e:
-        print(f"Ошибка записи webapp/subs.json: {e}")
+        print(f"Ошибка записи webapp/subs_{chat_id}.json: {e}")
 
 
 # ── Mini App: HTTP-сервер + cloudflared тоннель ────────────────────────────────
 
 def _start_webapp_server() -> None:
-    """Запускает простой HTTP-сервер для раздачи webapp/ в отдельном потоке."""
+    """Запускает HTTP-сервер для раздачи webapp/ в отдельном потоке."""
     if not WEBAPP_DIR.exists():
         return
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(WEBAPP_DIR), **kwargs)
+        def end_headers(self):
+            # CORS нужен, т.к. HTML грузится с GitHub Pages, данные — с тоннеля
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            super().end_headers()
         def log_message(self, *args):
-            pass  # подавляем логи сервера
+            pass
 
     server = http.server.HTTPServer(("127.0.0.1", WEBAPP_PORT), Handler)
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
+    threading.Thread(target=server.serve_forever, daemon=True).start()
     print(f"Mini App HTTP-сервер запущен на порту {WEBAPP_PORT}")
 
 
 def _start_cloudflared_tunnel() -> str | None:
     """Запускает cloudflared quick tunnel в фоне, возвращает URL через очередь."""
-    if not CLOUDFLARED_PATH.exists():
-        print("cloudflared.exe не найден — Mini App недоступен")
+    cf = _find_cloudflared()
+    if not cf:
+        print("cloudflared не найден — данные Mini App недоступны извне (HTML грузится с GitHub Pages)")
         return None
 
     try:
         proc = subprocess.Popen(
-            [str(CLOUDFLARED_PATH), "tunnel", "--url", f"http://127.0.0.1:{WEBAPP_PORT}",
+            [str(cf), "tunnel", "--url", f"http://127.0.0.1:{WEBAPP_PORT}",
              "--no-autoupdate"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
@@ -1937,8 +1961,6 @@ def main():
         tunnel_url = _start_cloudflared_tunnel()
         if tunnel_url:
             WEBAPP_URL = tunnel_url
-            global MAIN_MENU
-            MAIN_MENU = _build_main_menu()
 
     cfg   = load_bot_cfg()
     token = cfg.get("token", "")

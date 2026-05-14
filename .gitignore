@@ -29,5 +29,7 @@ _parser_*.json
 
 # Генерируемые файлы Mini App
 webapp/data.json
+webapp/data_*.json
 webapp/subs.json
+webapp/subs_*.json
 webapp/config.json
