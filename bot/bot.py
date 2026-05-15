@@ -1121,32 +1121,62 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
     context.user_data["fetch_status_msg_id"] = status_msg.message_id
 
-    stop_event = threading.Event()
-    context.user_data["fetch_stop_event"] = stop_event
-
-    loop = asyncio.get_event_loop()
-
-    def _progress(found: int, page: int, total_pages: int) -> None:
-        text = f"🔍 Страница {page}/{total_pages} · найдено {found}\n{filter_summary}"
-        asyncio.run_coroutine_threadsafe(
-            _safe_edit(status_msg, text, stop_kb),
-            loop,
-        )
-
-    future = loop.run_in_executor(None, _fetch_with_filters, filters, stop_event, _progress)
-    context.user_data["fetch_future"] = future
-
+    # Пишем фильтры во временный файл
+    fd, filter_path = tempfile.mkstemp(suffix=".json", prefix="_fetch_", dir=str(CONFIG_DIR))
+    fd2, result_path = tempfile.mkstemp(suffix=".json", prefix="_result_", dir=str(CONFIG_DIR))
+    os.close(fd); os.close(fd2)
     try:
-        contracts = await future
-    except asyncio.CancelledError:
-        await _safe_edit(status_msg, "🛑 Поиск остановлен.")
-        return
-    finally:
-        context.user_data.pop("fetch_future", None)
-        context.user_data.pop("fetch_stop_event", None)
-        context.user_data.pop("fetch_status_msg_id", None)
+        with open(filter_path, "w", encoding="utf-8") as f:
+            json.dump(filters, f, ensure_ascii=False)
 
-    # Сохраняем в БД (и частичные результаты при остановке)
+        agent_path = str(Path(__file__).parent.parent / "agents" / "parser_agent.py")
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, agent_path,
+            "--filters", filter_path,
+            "--out", result_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        context.user_data["fetch_process"] = proc
+
+        # Читаем прогресс из stdout в фоне
+        async def _read_progress():
+            async for raw in proc.stdout:
+                line = raw.decode("utf-8", errors="replace").strip()
+                if "Страница" in line and "/" in line:
+                    try:
+                        # "Страница 2/5... 8 записей"
+                        parts = line.split()
+                        pg = parts[1]  # "2/5..."
+                        pg = pg.rstrip(".")
+                        found_idx = next((i for i, p in enumerate(parts) if p.isdigit() and i > 1), None)
+                        found = int(parts[found_idx]) if found_idx else "?"
+                        text = f"🔍 Страница {pg} · найдено {found}\n{filter_summary}"
+                        await _safe_edit(status_msg, text, stop_kb)
+                    except Exception:
+                        pass
+
+        progress_task = asyncio.create_task(_read_progress())
+
+        await proc.wait()
+        progress_task.cancel()
+
+        stopped = (proc.returncode != 0)
+        contracts = []
+        result_file = Path(result_path)
+        if result_file.exists() and result_file.stat().st_size > 2:
+            try:
+                contracts = json.loads(result_file.read_text(encoding="utf-8"))
+            except Exception:
+                contracts = []
+
+    finally:
+        context.user_data.pop("fetch_process", None)
+        context.user_data.pop("fetch_status_msg_id", None)
+        Path(filter_path).unlink(missing_ok=True)
+        Path(result_path).unlink(missing_ok=True)
+
+    # Сохраняем в БД
     for c in contracts:
         db_id = upsert_contract({
             "number":   c.get("number",   ""),
@@ -1157,7 +1187,7 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         })
         c["_db_id"] = db_id
 
-    if stop_event.is_set():
+    if stopped:
         msg = f"🛑 Остановлено. Найдено: {len(contracts)}" if contracts else "🛑 Поиск остановлен."
         await _safe_edit(status_msg, msg)
         if not contracts:
@@ -1195,15 +1225,12 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def callback_fetch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query      = update.callback_query
-    stop_event = context.user_data.get("fetch_stop_event")
-    future     = context.user_data.get("fetch_future")
-    if stop_event is not None or future is not None:
-        if stop_event:
-            stop_event.set()
-        # Немедленно обновляем сообщение — не ждём завершения потока
+    query = update.callback_query
+    proc  = context.user_data.get("fetch_process")
+    if proc and proc.returncode is None:
+        proc.terminate()  # немедленно убивает процесс парсера
         try:
-            await query.edit_message_text("🛑 Останавливаю... (досбираем текущую страницу)")
+            await query.edit_message_text("🛑 Поиск остановлен.")
         except (BadRequest, TimedOut, NetworkError):
             pass
         await _qanswer(query)
