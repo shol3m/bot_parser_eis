@@ -33,6 +33,17 @@ def _resolve_date(value: str | None) -> str | None:
     return value
 
 
+# Все возможные способы определения поставщика
+ALL_METHODS = ("af", "ca", "pa")
+
+# Человекочитаемые названия методов
+METHOD_LABELS = {
+    "af": "Аукцион (ЭА)",
+    "ca": "Конкурс",
+    "pa": "Запрос предложений",
+}
+
+
 def build_search_params(filters: dict, page: int = 1) -> dict:
     params = {
         "morphology": "on",
@@ -43,6 +54,7 @@ def build_search_params(filters: dict, page: int = 1) -> dict:
         "sortBy": "UPDATE_DATE",
     }
 
+    # Закон
     law = filters.get("law", "44")
     if law == "44":
         params["fz44"] = "on"
@@ -52,24 +64,44 @@ def build_search_params(filters: dict, page: int = 1) -> dict:
         params["fz44"] = "on"
         params["fz223"] = "on"
 
-    if filters.get("keywords"):
-        params["searchString"] = " ".join(filters["keywords"])
+    # Способы определения поставщика (af/ca/pc/pa)
+    # Если не задано — включаем все (поведение по умолчанию ЕИС)
+    methods = filters.get("methods")
+    if methods:
+        for m in methods:
+            if m in ALL_METHODS:
+                params[m] = "on"
+    # Если methods=None/[] — не передаём флаги, ЕИС вернёт все методы
 
+    # Ключевые слова + заказчик + кастомный ОКПД2 объединяем в searchString.
+    # ЕИС игнорирует customerFullNameOrinn в расширенном поиске (требует
+    # customerIdOrg из модалки), поэтому ИНН/имя идёт в полнотекстовый поиск.
+    # Кастомный ОКПД2 (okpd2_custom_code) тоже добавляем сюда — okpd2IdsCodes
+    # без числового ID не работает.
+    search_parts = list(filters.get("keywords") or [])
+    if filters.get("customer_inn"):
+        search_parts.insert(0, filters["customer_inn"].strip())
+    if filters.get("okpd2_custom_code") and not filters.get("okpd2_key"):
+        search_parts.insert(0, filters["okpd2_custom_code"].strip())
+    if search_parts:
+        params["searchString"] = " ".join(search_parts)
+
+    # Цена
     if filters.get("price_from") is not None:
         params["priceFromGeneral"] = filters["price_from"]
     if filters.get("price_to") is not None:
         params["priceToGeneral"] = filters["price_to"]
 
+    # ОКПД2
     if filters.get("okpd2_key"):
         params["okpd2Ids"] = filters["okpd2_key"]
         params["okpd2IdsWithNested"] = "on"
 
+    # Регион заказчика
     for code in filters.get("region_codes", []):
-        params.setdefault("af:customerPlace", []).append(code)
+        params.setdefault("customerPlace", []).append(code)
 
-    if filters.get("customer_inn"):
-        params["customerFullNameOrinn"] = filters["customer_inn"].strip()
-
+    # Дата
     date_from = _resolve_date(filters.get("date_from"))
     date_to   = _resolve_date(filters.get("date_to"))
     date_type = filters.get("date_type", "published")
@@ -77,8 +109,9 @@ def build_search_params(filters: dict, page: int = 1) -> dict:
         if date_from: params["updateDateFrom"] = date_from
         if date_to:   params["updateDateTo"]   = date_to
     elif date_type == "end":
-        if date_from: params["auctionDateFrom"] = date_from
-        if date_to:   params["auctionDateTo"]   = date_to
+        # Дата окончания подачи заявок
+        if date_from: params["applSubmissionCloseDateFrom"] = date_from
+        if date_to:   params["applSubmissionCloseDateTo"]   = date_to
     else:  # published (default)
         if date_from: params["publishDateFrom"] = date_from
         if date_to:   params["publishDateTo"]   = date_to

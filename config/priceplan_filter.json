@@ -1,10 +1,11 @@
 {
   "keywords": [],
-  "okpd2_key": 8873870,
-  "okpd2_section": "J",
+  "okpd2_key": null,
+  "okpd2_section": null,
   "region_codes": [],
   "customer_inn": "",
-  "law": "44",
+  "statuses": ["published", "proposed", "ended"],
   "date_from": "today",
-  "date_to": "today"
+  "date_to": "today",
+  "date_type": "published"
 }

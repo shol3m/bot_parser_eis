@@ -3,9 +3,12 @@
   "okpd2_key": 8873870,
   "okpd2_section": "J",
   "region_codes": [],
+  "customer_inn": "",
   "price_from": null,
   "price_to": null,
   "law": "44",
+  "methods": [],
   "date_from": "today",
-  "date_to": "today"
+  "date_to": "today",
+  "date_type": "published"
 }

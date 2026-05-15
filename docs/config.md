@@ -35,8 +35,10 @@
       "price_from":    null,         // НМЦ от (руб, число или null)
       "price_to":      null,         // НМЦ до (руб, число или null)
       "law":           "44",         // "44", "223" или "both"
+      "methods":       [],           // ["af","ca","pa"] или [] = все способы
       "date_from":     "today",      // "today", "yesterday" или "ДД.ММ.ГГГГ"
-      "date_to":       "today"
+      "date_to":       "today",
+      "date_type":     "published"   // "published", "updated", "end"
     }
   }
 }
@@ -46,6 +48,8 @@
 - Пресет `"default"` нельзя удалить
 - `"law": "both"` — два запроса к парсеру, результаты объединяются с дедупликацией по `number`
 - `"okpd2_section": null` + `"okpd2_key": null` = поиск по всем разделам
+- `"methods": []` = все способы закупки; `["af"]` = только аукционы
+- `"customer_inn"` добавляется в `searchString` (ЕИС не принимает его отдельным параметром)
 
 ---
 
@@ -77,10 +81,34 @@
   "okpd2_key":     8873870,
   "okpd2_section": "J",
   "region_codes":  [],
+  "customer_inn":  "",
   "price_from":    null,
   "price_to":      null,
   "law":           "44",
+  "methods":       [],
   "date_from":     "today",
-  "date_to":       "today"
+  "date_to":       "today",
+  "date_type":     "published"
 }
 ```
+
+---
+
+## priceplan_filter.json
+
+Фильтры раздела «Запросы цен товаров, работ, услуг» (`/ppfilters`).  
+ОКПД2 не поддерживается этим разделом ЕИС.
+
+```json
+{
+  "keywords":   [],
+  "region_codes": [],
+  "customer_inn": "",
+  "statuses":   ["published", "proposed", "ended"],
+  "date_from":  "today",
+  "date_to":    "today",
+  "date_type":  "published"
+}
+```
+
+`statuses`: любая комбинация `"published"` / `"proposed"` / `"ended"`.
