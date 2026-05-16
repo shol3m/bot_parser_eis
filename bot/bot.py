@@ -110,7 +110,8 @@ from parsers.zakupki import fetch_contract_documents, download_document
 
 CONFIG_DIR    = Path(__file__).parent.parent / "config"
 BOT_CFG_PATH  = CONFIG_DIR / "bot_config.json"
-PRESETS_PATH  = CONFIG_DIR / "saved_filters.json"
+PRESETS_PATH     = CONFIG_DIR / "saved_filters.json"
+PP_PRESETS_PATH  = CONFIG_DIR / "saved_pp_filters.json"
 PROMPTS_PATH  = CONFIG_DIR / "prompts.json"
 
 # UTC+3 (Москва) для планировщика
@@ -156,7 +157,7 @@ HELP_TEXT = (
     "📖 *Инструкция по работе с ботом*\n\n"
     "*Типичный сценарий:*\n"
     "1\\. ⚙️ *Фильтры поиска* — настройте ФЗ, ОКПД2, ключевые слова, сумму и дату\n"
-    "2\\. 💾 Сохраните пресет чтобы не вводить фильтры заново\n"
+    "2\\. 💾 Сохраните фильтр чтобы не вводить настройки заново\n"
     "3\\. 🔍 *Найти закупки* — запускает парсинг zakupki\\.gov\\.ru \\(1–2 мин\\)\n"
     "4\\. ◀ ▶ Листайте карточки закупок\n"
     "5\\. 🤖 *Анализ* — выбираете документы с ЕИС → Claude читает ТЗ и даёт оценку\n\n"
@@ -166,7 +167,7 @@ HELP_TEXT = (
     "*Полезно знать:*\n"
     "• `/fetch 15.05.2026` — поиск за конкретную дату\n"
     "• 🤖 *Настройки анализа* — изменить инструкцию для детального анализа ТЗ\n"
-    "• 📊 *Статус* — статистика БД и активный пресет\n"
+    "• 📊 *Статус* — статистика БД и активный фильтр\n"
     "• ⏭ *Пропустить* — убирает закупку из текущей выдачи"
 )
 
@@ -239,6 +240,19 @@ def get_active_filter() -> dict:
     return deepcopy(data["presets"].get(name, DEFAULT_FILTER))
 
 
+def load_pp_presets() -> dict:
+    if not PP_PRESETS_PATH.exists():
+        data = {"active": "default", "presets": {"default": deepcopy(DEFAULT_PRICEPLAN_FILTER)}}
+        _save_pp_presets(data)
+        return data
+    with open(PP_PRESETS_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+def _save_pp_presets(data: dict) -> None:
+    with open(PP_PRESETS_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
 # ── Отображение фильтра ────────────────────────────────────────────────────────
 
 _DATE_TYPE_LABELS = {"published": "По размещению", "updated": "По обновлению", "end": "По окончанию"}
@@ -282,7 +296,7 @@ def _filter_summary(f: dict) -> str:
 def _filter_menu_text(draft: dict, active_name: str, note: str = "") -> str:
     text = (
         f"⚙️ *Настройка фильтров*\n"
-        f"Активный пресет: *{active_name}*\n\n"
+        f"Фильтр: *{active_name}*\n\n"
         f"{_filter_summary(draft)}"
     )
     if note:
@@ -291,82 +305,122 @@ def _filter_menu_text(draft: dict, active_name: str, note: str = "") -> str:
 
 
 def _filter_keyboard(draft: dict, presets: dict) -> InlineKeyboardMarkup:
-    law  = draft.get("law", "44")
+    """Компактное главное меню — каждый параметр одной кнопкой с текущим значением."""
+    law     = draft.get("law", "44")
+    methods = draft.get("methods") or []
+    okpd    = draft.get("okpd2_section") or "all"
+    dt_key  = draft.get("date_type", "published")
+    df      = draft.get("date_from", "today")
+    dt      = draft.get("date_to",   "today")
+    kw      = draft.get("keywords") or []
+    cust    = draft.get("customer_inn", "")
+    pf      = draft.get("price_from")
+    pt      = draft.get("price_to")
+
+    law_lbl  = {"44": "44-ФЗ", "223": "223-ФЗ", "both": "Оба ФЗ"}.get(law, law)
+    meth_lbl = " + ".join(_METHOD_SHORT.get(m, m) for m in methods) if methods else "все способы"
+    okpd_lbl = "Раздел J" if okpd == "J" else ("Все разделы" if not okpd or okpd == "all" else okpd)
+    dtyp_lbl = _DATE_TYPE_LABELS.get(dt_key, dt_key)
+    date_lbl = df if df == dt else f"{df}–{dt}"
+    kw_lbl   = ", ".join(kw[:3]) + ("…" if len(kw) > 3 else "") if kw else "не заданы"
+    cust_lbl = cust[:22] if cust else "—"
+    if pf or pt:
+        s_pf = f"{int(pf):,}".replace(",", " ") + " ₽" if pf else "0"
+        s_pt = f"{int(pt):,}".replace(",", " ") + " ₽" if pt else "∞"
+        sum_lbl = f"{s_pf} — {s_pt}"
+    else:
+        sum_lbl = "любая"
+
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"⚖️  {law_lbl}  •  {meth_lbl}",    callback_data="f:open:law_method")],
+        [InlineKeyboardButton(f"🏷  ОКПД2: {okpd_lbl}",            callback_data="f:open:okpd")],
+        [InlineKeyboardButton(f"📅  {dtyp_lbl}: {date_lbl}",       callback_data="f:open:date")],
+        [
+            InlineKeyboardButton(f"🔤 Слова: {kw_lbl}",  callback_data="f:kw:set"),
+            InlineKeyboardButton("✖",                      callback_data="f:kw:clear"),
+        ],
+        [
+            InlineKeyboardButton(f"🏛 Заказчик: {cust_lbl}", callback_data="f:customer:set"),
+            InlineKeyboardButton("✖",                          callback_data="f:customer:clear"),
+        ],
+        [InlineKeyboardButton(f"💰 Сумма: {sum_lbl}",             callback_data="f:open:sum")],
+        [
+            InlineKeyboardButton(f"📋 Фильтры ({len(presets)})", callback_data="f:presets"),
+            InlineKeyboardButton("↺ Сбросить",                    callback_data="f:reset"),
+        ],
+        [InlineKeyboardButton("🔍 Запустить поиск",              callback_data="f:apply")],
+    ])
+
+
+def _filter_kb_law_method(draft: dict) -> InlineKeyboardMarkup:
+    law     = draft.get("law", "44")
+    methods = draft.get("methods") or []
+    def m(c): return "✅ " if c else ""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(f"{m(law=='44')}44-ФЗ",    callback_data="f:law:44"),
+            InlineKeyboardButton(f"{m(law=='223')}223-ФЗ",   callback_data="f:law:223"),
+            InlineKeyboardButton(f"{m(law=='both')}Оба ФЗ",  callback_data="f:law:both"),
+        ],
+        [
+            InlineKeyboardButton(f"{m('af' in methods)}Аукцион",    callback_data="f:method:af"),
+            InlineKeyboardButton(f"{m('ca' in methods)}Конкурс",     callback_data="f:method:ca"),
+            InlineKeyboardButton(f"{m('pa' in methods)}Предложения", callback_data="f:method:pa"),
+        ],
+        [InlineKeyboardButton("← Назад", callback_data="f:back")],
+    ])
+
+
+def _filter_kb_okpd(draft: dict) -> InlineKeyboardMarkup:
     okpd = draft.get("okpd2_section") or "all"
-    pf   = draft.get("price_from")
-    pt   = draft.get("price_to")
+    def m(c): return "✅ " if c else ""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(f"{m(okpd=='J')}Раздел J (ИТ)", callback_data="f:okpd:J"),
+            InlineKeyboardButton(f"{m(okpd=='all')}Все разделы",  callback_data="f:okpd:all"),
+        ],
+        [InlineKeyboardButton("✏️ Свой код ОКПД2…", callback_data="f:okpd:custom")],
+        [InlineKeyboardButton("← Назад", callback_data="f:back")],
+    ])
 
-    def _mark(cond):
-        return "✅ " if cond else ""
 
+def _filter_kb_date(draft: dict) -> InlineKeyboardMarkup:
+    date_type = draft.get("date_type", "published")
+    def m(c): return "✅ " if c else ""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(f"{m(date_type=='published')}По размещению", callback_data="f:date_type:published"),
+            InlineKeyboardButton(f"{m(date_type=='updated')}По обновлению",   callback_data="f:date_type:updated"),
+            InlineKeyboardButton(f"{m(date_type=='end')}По окончанию",        callback_data="f:date_type:end"),
+        ],
+        [
+            InlineKeyboardButton("Сегодня",  callback_data="f:date:today"),
+            InlineKeyboardButton("Вчера",    callback_data="f:date:yesterday"),
+            InlineKeyboardButton("7 дней",   callback_data="f:date:week"),
+            InlineKeyboardButton("Период…",  callback_data="f:date:custom"),
+        ],
+        [InlineKeyboardButton("← Назад", callback_data="f:back")],
+    ])
+
+
+def _filter_kb_sum(draft: dict) -> InlineKeyboardMarkup:
+    pf = draft.get("price_from")
+    pt = draft.get("price_to")
     pf_lbl = f"От: {int(pf):,} ₽".replace(",", " ") if pf else "Сумма от: любая"
     pt_lbl = f"До: {int(pt):,} ₽".replace(",", " ") if pt else "Сумма до: любая"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(pf_lbl, callback_data="f:price_from")],
+        [InlineKeyboardButton(pt_lbl, callback_data="f:price_to")],
+        [InlineKeyboardButton("← Назад", callback_data="f:back")],
+    ])
 
-    kw        = draft.get("keywords") or []
-    kw_lbl    = f"🔤 Слова: {', '.join(kw[:3])}{'…' if len(kw) > 3 else ''}" if kw else "🔤 Ключевые слова…"
-    cust      = draft.get("customer_inn", "")
-    cust_lbl  = f"🏛 {cust[:25]}" if cust else "🏛 Заказчик (ИНН/имя)…"
-    date_type = draft.get("date_type", "published")
 
-    methods = draft.get("methods") or []
-
-    rows = [
-        # Закон
-        [
-            InlineKeyboardButton(f"{_mark(law == '44')}44-ФЗ",    callback_data="f:law:44"),
-            InlineKeyboardButton(f"{_mark(law == '223')}223-ФЗ",   callback_data="f:law:223"),
-            InlineKeyboardButton(f"{_mark(law == 'both')}Оба ФЗ",  callback_data="f:law:both"),
-        ],
-        # Способ определения поставщика
-        [
-            InlineKeyboardButton(f"{_mark('af' in methods)}Аукцион",    callback_data="f:method:af"),
-            InlineKeyboardButton(f"{_mark('ca' in methods)}Конкурс",     callback_data="f:method:ca"),
-            InlineKeyboardButton(f"{_mark('pa' in methods)}Предложения", callback_data="f:method:pa"),
-        ],
-        # ОКПД2
-        [
-            InlineKeyboardButton(f"{_mark(okpd == 'J')}Раздел J (ИТ)", callback_data="f:okpd:J"),
-            InlineKeyboardButton(f"{_mark(okpd == 'all')}Все разделы",  callback_data="f:okpd:all"),
-            InlineKeyboardButton("Свой код...",                          callback_data="f:okpd:custom"),
-        ],
-        # Ключевые слова
-        [
-            InlineKeyboardButton(kw_lbl,        callback_data="f:kw:set"),
-            InlineKeyboardButton("✖ Очистить",  callback_data="f:kw:clear"),
-        ],
-        # Заказчик
-        [
-            InlineKeyboardButton(cust_lbl,      callback_data="f:customer:set"),
-            InlineKeyboardButton("✖",           callback_data="f:customer:clear"),
-        ],
-        # Сумма
-        [
-            InlineKeyboardButton(pf_lbl, callback_data="f:price_from"),
-            InlineKeyboardButton(pt_lbl, callback_data="f:price_to"),
-        ],
-        # Тип даты
-        [
-            InlineKeyboardButton(f"{_mark(date_type=='published')}По размещению", callback_data="f:date_type:published"),
-            InlineKeyboardButton(f"{_mark(date_type=='updated')}По обновлению",   callback_data="f:date_type:updated"),
-            InlineKeyboardButton(f"{_mark(date_type=='end')}По окончанию",        callback_data="f:date_type:end"),
-        ],
-        # Дата
-        [
-            InlineKeyboardButton("📅 Сегодня",  callback_data="f:date:today"),
-            InlineKeyboardButton("📅 Вчера",    callback_data="f:date:yesterday"),
-            InlineKeyboardButton("📅 Период…",  callback_data="f:date:custom"),
-        ],
-        # Пресеты
-        [
-            InlineKeyboardButton("💾 Сохранить пресет",             callback_data="f:save"),
-            InlineKeyboardButton(f"📋 Пресеты ({len(presets)})",    callback_data="f:presets"),
-        ],
-        # Применить
-        [
-            InlineKeyboardButton("🔍 Искать с этими фильтрами", callback_data="f:apply"),
-        ],
-    ]
-    return InlineKeyboardMarkup(rows)
+def _get_filter_kb(draft: dict, view: str, presets: dict) -> InlineKeyboardMarkup:
+    if view == "law_method": return _filter_kb_law_method(draft)
+    if view == "okpd":       return _filter_kb_okpd(draft)
+    if view == "date":       return _filter_kb_date(draft)
+    if view == "sum":        return _filter_kb_sum(draft)
+    return _filter_keyboard(draft, presets)
 
 
 async def _safe_edit(msg, text: str, reply_markup=None) -> None:
@@ -378,12 +432,13 @@ async def _safe_edit(msg, text: str, reply_markup=None) -> None:
 
 
 async def _refresh_filter_msg(query, context, note: str = "") -> None:
-    """Обновляет уже отправленное меню фильтров."""
-    data = load_presets()
-    draft = context.user_data.get("draft", DEFAULT_FILTER)
+    """Обновляет уже отправленное меню фильтров (с учётом текущего подменю)."""
+    data        = load_presets()
+    draft       = context.user_data.get("draft", DEFAULT_FILTER)
     active_name = data.get("active", "default")
-    text = _filter_menu_text(draft, active_name, note)
-    kb   = _filter_keyboard(draft, data["presets"])
+    view        = context.user_data.get("filter_view", "main")
+    text        = _filter_menu_text(draft, active_name, note)
+    kb          = _get_filter_kb(draft, view, data["presets"])
     try:
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
     except (BadRequest, TimedOut, NetworkError):
@@ -716,7 +771,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"Собрано сегодня: {today}\n"
         f"Детально проанализировано: {analyzed}\n"
         f"Папок с документами: {docs_count}\n\n"
-        f"Активный пресет: *{active_name}*\n"
+        f"Активный фильтр: *{active_name}*\n"
         f"{_filter_summary(active_flt)}\n\n"
         f"⏰ Автосбор: {sched} МСК",
         parse_mode=ParseMode.MARKDOWN,
@@ -747,6 +802,7 @@ async def cmd_filters(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if "draft" not in context.user_data:
         context.user_data["draft"] = deepcopy(data["presets"].get(active_name, DEFAULT_FILTER))
+    context.user_data["filter_view"] = "main"
 
     draft = context.user_data["draft"]
     text  = _filter_menu_text(draft, active_name)
@@ -776,7 +832,17 @@ async def callback_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     parts = query.data.split(":", 2)  # ["f", "sub", "val?"]
     sub   = parts[1]
 
-    if sub == "kw":
+    if sub == "open":
+        context.user_data["filter_view"] = parts[2]
+        await _qanswer(query)
+        await _refresh_filter_msg(query, context)
+
+    elif sub == "back":
+        context.user_data["filter_view"] = "main"
+        await _qanswer(query)
+        await _refresh_filter_msg(query, context)
+
+    elif sub == "kw":
         val = parts[2]
         if val == "set":
             await _qanswer(query, "Введите слова ↓")
@@ -889,20 +955,35 @@ async def callback_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             draft["date_from"] = draft["date_to"] = "yesterday"
             await _qanswer(query, "✅ Вчера")
             await _refresh_filter_msg(query, context)
+        elif val == "week":
+            import datetime as _dt
+            today = _dt.date.today()
+            draft["date_from"] = (today - _dt.timedelta(days=6)).strftime("%d.%m.%Y")
+            draft["date_to"]   = today.strftime("%d.%m.%Y")
+            await _qanswer(query, "✅ Последние 7 дней")
+            await _refresh_filter_msg(query, context)
         elif val == "custom":
             await _qanswer(query, "Введите период ↓")
-            context.user_data["await_input"]   = "date_from"
+            context.user_data["await_input"]   = "date_range"
             context.user_data["filter_msg_id"] = query.message.message_id
             await query.message.reply_text(
-                "Введите дату ОТ в формате `ДД.ММ.ГГГГ`:",
+                "Введите дату или период:\n"
+                "• Одна дата: `01.05.2026`\n"
+                "• Период: `01.05.2026-31.05.2026`",
                 parse_mode=ParseMode.MARKDOWN,
             )
+
+    elif sub == "reset":
+        context.user_data["draft"] = deepcopy(DEFAULT_FILTER)
+        context.user_data["filter_view"] = "main"
+        await _qanswer(query, "✅ Фильтры сброшены")
+        await _refresh_filter_msg(query, context)
 
     elif sub == "save":
         await _qanswer(query, "Введите название ↓")
         context.user_data["await_input"]   = "preset_name"
         context.user_data["filter_msg_id"] = query.message.message_id
-        await query.message.reply_text("Введите название пресета:")
+        await query.message.reply_text("Введите название для сохранения:")
 
     elif sub == "presets":
         await _qanswer(query)
@@ -910,21 +991,22 @@ async def callback_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif sub == "apply":
         context.user_data["pending_filter"] = deepcopy(draft)
-        await _qanswer(query, "✅ Фильтры применены")
-        await query.message.reply_text(
-            "✅ Фильтры готовы. Запустите /fetch или нажмите 🔍 Найти закупки.",
-            reply_markup=_current_main_menu(),
-        )
+        await _qanswer(query, "▶️ Запускаю поиск…")
+        class _FakeMsg:
+            chat = query.message.chat
+            from_user = query.from_user
+            async def reply_text(self, *a, **kw): return await query.message.reply_text(*a, **kw)
+        class _FakeUpdate:
+            message = _FakeMsg()
+            effective_chat = query.message.chat
+            effective_user = query.from_user
+        await cmd_fetch(_FakeUpdate(), context)
 
 
 async def _show_presets_menu(query, context) -> None:
     data    = load_presets()
     presets = data["presets"]
     active  = data.get("active", "default")
-
-    if not presets:
-        await query.message.reply_text("Нет сохранённых пресетов.")
-        return
 
     rows = []
     for name in presets:
@@ -933,20 +1015,14 @@ async def _show_presets_menu(query, context) -> None:
             InlineKeyboardButton(f"{mark}{name}", callback_data=f"ps:load:{name}"),
             InlineKeyboardButton("🗑",             callback_data=f"ps:del:{name}"),
         ])
+    rows.append([InlineKeyboardButton("💾 Сохранить текущие фильтры", callback_data="f:save")])
     rows.append([InlineKeyboardButton("← Назад", callback_data="ps:back")])
 
+    header = "📋 *Сохранённые фильтры*\nНажмите для применения:"
     try:
-        await query.edit_message_text(
-            "📋 *Сохранённые пресеты*\nНажмите имя чтобы загрузить:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup(rows),
-        )
+        await query.edit_message_text(header, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(rows))
     except (BadRequest, TimedOut, NetworkError):
-        await query.message.reply_text(
-            "📋 *Сохранённые пресеты*\nНажмите имя чтобы загрузить:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup(rows),
-        )
+        await query.message.reply_text(header, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(rows))
 
 
 async def callback_preset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -965,18 +1041,14 @@ async def callback_preset(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             data["active"] = name
             _save_presets(data)
             context.user_data["draft"] = deepcopy(data["presets"][name])
+            context.user_data["filter_view"] = "main"
             context.user_data.pop("pending_filter", None)
-            await _refresh_filter_msg(query, context, note=f"Пресет «{name}» загружен")
-            await query.message.reply_text(
-                f"✅ Активен пресет: *{name}*",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=_current_main_menu(),
-            )
+            await _refresh_filter_msg(query, context, note=f"Применён фильтр «{name}»")
 
     elif sub == "del" and len(parts) == 3:
         name = parts[2]
         if name == "default":
-            await query.answer("Нельзя удалить пресет «default»", show_alert=True)
+            await query.answer("Нельзя удалить фильтр «default»", show_alert=True)
             return
         if name in data["presets"]:
             del data["presets"][name]
@@ -986,6 +1058,7 @@ async def callback_preset(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _show_presets_menu(query, context)
 
     elif sub == "back":
+        context.user_data["filter_view"] = "main"
         await _refresh_filter_msg(query, context)
 
 
@@ -1072,6 +1145,22 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         except ValueError:
             await _ask_again("Не понял. Введите число от 0 до 1 000 000 000 000, например `500000`.")
 
+    elif awaiting == "date_range":
+        clean = text.strip().replace(" ", "")
+        if "-" in clean:
+            parts_d = clean.split("-", 1)
+            if len(parts_d) == 2 and _is_valid_date(parts_d[0]) and _is_valid_date(parts_d[1]):
+                draft["date_from"] = parts_d[0]
+                draft["date_to"]   = parts_d[1]
+                await _done(f"Период: {parts_d[0]} — {parts_d[1]}")
+            else:
+                await _ask_again("Неверный формат. Используйте `ДД.ММ.ГГГГ-ДД.ММ.ГГГГ`, например `01.05.2026-31.05.2026`.")
+        elif _is_valid_date(clean):
+            draft["date_from"] = draft["date_to"] = clean
+            await _done(f"Дата: {clean}")
+        else:
+            await _ask_again("Используйте `ДД.ММ.ГГГГ` или `ДД.ММ.ГГГГ-ДД.ММ.ГГГГ`.")
+
     elif awaiting == "date_from":
         if _is_valid_date(text):
             draft["date_from"] = text
@@ -1130,8 +1219,38 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         pdata["active"]        = name
         _save_presets(pdata)
         context.user_data.pop("await_input", None)
-        await update.message.reply_text(f"✅ Пресет «{name}» сохранён и активирован.")
+        await update.message.reply_text(f"✅ Сохранено: «{name}»")
         await _try_refresh_filter_menu(update, context)
+
+    elif awaiting == "ppwatch_name":
+        context.user_data.pop("await_input", None)
+        name = text.strip() or "НМЦК"
+        context.user_data["ppwatch_draft_name"] = name
+        flt = context.user_data.get("ppwatch_draft_filter", {**_load_priceplan_filter(), "_type": "priceplan"})
+        pp_flt = {k: v for k, v in flt.items() if k != "_type"}
+        await update.message.reply_text(
+            f"➕ *{name}*\n\n"
+            f"Фильтры:\n{_priceplan_summary(pp_flt)}\n\n"
+            f"Как часто проверять новые запросы цены?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton(f"{h}ч", callback_data=f"ppwt:interval:{h}") for h in WATCH_INTERVALS]],
+            ),
+        )
+
+    elif awaiting == "pp_preset_name":
+        name = text.strip()
+        if not name:
+            await _ask_again("Имя не может быть пустым.")
+            return
+        context.user_data.pop("await_input", None)
+        pp_f  = context.user_data.get("pp_draft", _load_priceplan_filter())
+        pdata = load_pp_presets()
+        pdata["presets"][name] = deepcopy(pp_f)
+        pdata["active"]        = name
+        _save_pp_presets(pdata)
+        await update.message.reply_text(f"✅ Сохранено: «{name}»")
+        await _try_refresh_pp_filter_menu(update, context)
 
     elif awaiting == "pp_keywords":
         context.user_data.pop("await_input", None)
@@ -1151,22 +1270,26 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     elif awaiting in ("pp_pub_date_range", "pp_upd_date_range"):
         f = context.user_data.setdefault("pp_draft", _load_priceplan_filter())
-        parts_d = text.strip().replace(" ", "").split("-")
-        if len(parts_d) == 2 and _is_valid_date(parts_d[0]) and _is_valid_date(parts_d[1]):
+        clean_d = text.strip().replace(" ", "")
+        label = "Размещение" if awaiting == "pp_pub_date_range" else "Обновление"
+        frm_key = "publish_date_from" if awaiting == "pp_pub_date_range" else "update_date_from"
+        to_key  = "publish_date_to"   if awaiting == "pp_pub_date_range" else "update_date_to"
+        if "-" in clean_d:
+            parts_d = clean_d.split("-", 1)
+            ok = len(parts_d) == 2 and _is_valid_date(parts_d[0]) and _is_valid_date(parts_d[1])
+        else:
+            ok = _is_valid_date(clean_d)
+            parts_d = [clean_d, clean_d]
+        if ok:
             context.user_data.pop("await_input", None)
-            if awaiting == "pp_pub_date_range":
-                f["publish_date_from"], f["publish_date_to"] = parts_d[0], parts_d[1]
-                label = "Размещение"
-            else:
-                f["update_date_from"],  f["update_date_to"]  = parts_d[0], parts_d[1]
-                label = "Обновление"
+            f[frm_key], f[to_key] = parts_d[0], parts_d[1]
             _save_priceplan_filter(f)
-            await update.message.reply_text(f"✅ {label}: {parts_d[0]} — {parts_d[1]}")
+            result = parts_d[0] if parts_d[0] == parts_d[1] else f"{parts_d[0]} — {parts_d[1]}"
+            await update.message.reply_text(f"✅ {label}: {result}")
             await _try_refresh_pp_filter_menu(update, context)
         else:
             await update.message.reply_text(
-                "Неверный формат. Введите период как `ДД.ММ.ГГГГ-ДД.ММ.ГГГГ`\n"
-                "Например: `01.05.2026-15.05.2026`",
+                "Используйте `ДД.ММ.ГГГГ` или `ДД.ММ.ГГГГ-ДД.ММ.ГГГГ`",
                 parse_mode=ParseMode.MARKDOWN,
             )
 
@@ -1210,15 +1333,16 @@ def _is_valid_date(s: str) -> bool:
 
 
 async def _try_refresh_filter_menu(update: Update, context) -> None:
-    """Обновляет меню фильтров закупок если оно открыто."""
+    """Обновляет меню фильтров закупок если оно открыто (с учётом текущего подменю)."""
     msg_id = context.user_data.get("filter_msg_id")
     if not msg_id:
         return
     data        = load_presets()
     draft       = context.user_data.get("draft", DEFAULT_FILTER)
     active_name = data.get("active", "default")
+    view        = context.user_data.get("filter_view", "main")
     text        = _filter_menu_text(draft, active_name)
-    kb          = _filter_keyboard(draft, data["presets"])
+    kb          = _get_filter_kb(draft, view, data["presets"])
     try:
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
@@ -1232,18 +1356,19 @@ async def _try_refresh_filter_menu(update: Update, context) -> None:
 
 
 async def _try_refresh_pp_filter_menu(update: Update, context) -> None:
-    """Обновляет меню фильтров НМЦК если оно открыто."""
+    """Обновляет меню фильтров НМЦК если оно открыто (с учётом подменю)."""
     msg_id = context.user_data.get("pp_filter_msg_id")
     if not msg_id:
         return
-    f = context.user_data.get("pp_draft", _load_priceplan_filter())
+    f    = context.user_data.get("pp_draft", _load_priceplan_filter())
+    view = context.user_data.get("pp_filter_view", "main")
     try:
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
             message_id=msg_id,
             text=f"⚙️ *Фильтры запросов цены*\n\n{_priceplan_summary(f)}",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=_pp_filter_keyboard(f),
+            reply_markup=_get_pp_filter_kb(f, view),
         )
     except BadRequest:
         pass
@@ -1432,74 +1557,104 @@ def _priceplan_summary(f: dict) -> str:
 
 
 def _pp_filter_keyboard(f: dict) -> InlineKeyboardMarkup:
+    """Компактное главное меню НМЦК-фильтров."""
     statuses = f.get("statuses", ["published", "proposed", "ended"])
-    kw       = f.get("keywords") or []
-    cust     = f.get("customer_inn", "")
-    pf       = f.get("publish_date_from") or ""
-    pt       = f.get("publish_date_to")   or ""
-    uf       = f.get("update_date_from")  or ""
-    ut       = f.get("update_date_to")    or ""
+    kw   = f.get("keywords") or []
+    cust = f.get("customer_inn", "")
+    pf   = f.get("publish_date_from") or ""
+    pt   = f.get("publish_date_to")   or ""
+    uf   = f.get("update_date_from")  or ""
+    ut   = f.get("update_date_to")    or ""
 
-    def m(cond): return "✅ " if cond else ""
-    kw_lbl   = f"🔤 {', '.join(kw[:2])}{'…' if len(kw)>2 else ''}" if kw else "🔤 Ключевые слова…"
-    cust_lbl = f"🏛 {cust[:25]}" if cust else "🏛 Заказчик…"
+    status_short = {"published": "Разм.", "proposed": "Подача", "ended": "Завершён", "cancelled": "Отменён"}
+    st_str  = " + ".join(status_short.get(s, s) for s in statuses) if statuses else "все"
+    kw_lbl  = ", ".join(kw[:3]) + ("…" if len(kw) > 3 else "") if kw else "не заданы"
+    cust_lbl = cust[:22] if cust else "—"
 
-    def _date_btn_label(frm, to, prefix):
-        if not frm and not to:
-            return f"📅 {prefix}: не задана"
-        if frm == to:
-            return f"📅 {prefix}: {frm}"
-        return f"📅 {prefix}: {frm}–{to}"
+    def _dlbl(frm, to):
+        if not frm and not to: return "не задана"
+        return frm if frm == to else f"{frm}–{to}"
 
-    pub_lbl = _date_btn_label(pf, pt, "Размещение")
-    upd_lbl = _date_btn_label(uf, ut, "Обновление")
-
-    rows = [
-        # Статус
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"📌 Статус: {st_str}",              callback_data="ppf:open:status")],
+        [InlineKeyboardButton(f"📅 Размещение: {_dlbl(pf, pt)}",   callback_data="ppf:open:pub_date")],
+        [InlineKeyboardButton(f"📅 Обновление: {_dlbl(uf, ut)}",   callback_data="ppf:open:upd_date")],
         [
-            InlineKeyboardButton(f"{m('published'  in statuses)}Размещён",         callback_data="ppf:status:published"),
-            InlineKeyboardButton(f"{m('proposed'   in statuses)}Подача предл.",     callback_data="ppf:status:proposed"),
+            InlineKeyboardButton(f"🔤 Слова: {kw_lbl}",   callback_data="ppf:kw:set"),
+            InlineKeyboardButton("✖",                       callback_data="ppf:kw:clear"),
         ],
         [
-            InlineKeyboardButton(f"{m('ended'      in statuses)}Завершён",          callback_data="ppf:status:ended"),
-            InlineKeyboardButton(f"{m('cancelled'  in statuses)}Отменён",           callback_data="ppf:status:cancelled"),
+            InlineKeyboardButton(f"🏛 Заказчик: {cust_lbl}", callback_data="ppf:customer:set"),
+            InlineKeyboardButton("✖",                          callback_data="ppf:customer:clear"),
         ],
-        # Дата размещения
-        [
-            InlineKeyboardButton(pub_lbl, callback_data="ppf:pub_date:info"),
-        ],
-        [
-            InlineKeyboardButton("Сегодня",  callback_data="ppf:pub_date:today"),
-            InlineKeyboardButton("Вчера",    callback_data="ppf:pub_date:yesterday"),
-            InlineKeyboardButton("Период…",  callback_data="ppf:pub_date:custom"),
-            InlineKeyboardButton("✖",        callback_data="ppf:pub_date:clear"),
-        ],
-        # Дата обновления
-        [
-            InlineKeyboardButton(upd_lbl, callback_data="ppf:upd_date:info"),
-        ],
-        [
-            InlineKeyboardButton("Сегодня",  callback_data="ppf:upd_date:today"),
-            InlineKeyboardButton("Вчера",    callback_data="ppf:upd_date:yesterday"),
-            InlineKeyboardButton("Период…",  callback_data="ppf:upd_date:custom"),
-            InlineKeyboardButton("✖",        callback_data="ppf:upd_date:clear"),
-        ],
-        # Ключевые слова
-        [
-            InlineKeyboardButton(kw_lbl,      callback_data="ppf:kw:set"),
-            InlineKeyboardButton("✖ Слова",   callback_data="ppf:kw:clear"),
-        ],
-        # Заказчик
-        [
-            InlineKeyboardButton(cust_lbl,    callback_data="ppf:customer:set"),
-            InlineKeyboardButton("✖",         callback_data="ppf:customer:clear"),
-        ],
-        # Запустить
         [
             InlineKeyboardButton("🔍 Запустить поиск", callback_data="ppf:run"),
+            InlineKeyboardButton("↺ Сбросить",         callback_data="ppf:reset"),
         ],
-    ]
-    return InlineKeyboardMarkup(rows)
+        [InlineKeyboardButton(f"📋 Фильтры ({len(load_pp_presets()['presets'])})", callback_data="ppf:presets")],
+    ])
+
+
+def _pp_kb_status(f: dict) -> InlineKeyboardMarkup:
+    statuses = f.get("statuses", [])
+    def m(s): return "✅ " if s in statuses else ""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(f"{m('published')}Размещён",      callback_data="ppf:status:published"),
+            InlineKeyboardButton(f"{m('proposed')}Подача предл.",   callback_data="ppf:status:proposed"),
+        ],
+        [
+            InlineKeyboardButton(f"{m('ended')}Завершён",          callback_data="ppf:status:ended"),
+            InlineKeyboardButton(f"{m('cancelled')}Отменён",        callback_data="ppf:status:cancelled"),
+        ],
+        [InlineKeyboardButton("← Назад", callback_data="ppf:back")],
+    ])
+
+
+def _pp_kb_date(sub: str, f: dict) -> InlineKeyboardMarkup:
+    frm_key = "publish_date_from" if sub == "pub_date" else "update_date_from"
+    to_key  = "publish_date_to"   if sub == "pub_date" else "update_date_to"
+    frm = f.get(frm_key) or ""
+    to  = f.get(to_key)  or ""
+    label = "Размещение" if sub == "pub_date" else "Обновление"
+    date_str = frm if frm == to else (f"{frm}–{to}" if frm or to else "не задана")
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"📅 {label}: {date_str}", callback_data=f"ppf:{sub}:custom")],
+        [
+            InlineKeyboardButton("Сегодня",  callback_data=f"ppf:{sub}:today"),
+            InlineKeyboardButton("Вчера",    callback_data=f"ppf:{sub}:yesterday"),
+            InlineKeyboardButton("7 дней",   callback_data=f"ppf:{sub}:week"),
+            InlineKeyboardButton("✖",        callback_data=f"ppf:{sub}:clear"),
+        ],
+        [InlineKeyboardButton("← Назад", callback_data="ppf:back")],
+    ])
+
+
+def _get_pp_filter_kb(f: dict, view: str) -> InlineKeyboardMarkup:
+    if view == "status":   return _pp_kb_status(f)
+    if view == "pub_date": return _pp_kb_date("pub_date", f)
+    if view == "upd_date": return _pp_kb_date("upd_date", f)
+    return _pp_filter_keyboard(f)
+
+
+async def _show_pp_presets_menu(query, context) -> None:
+    data    = load_pp_presets()
+    presets = data["presets"]
+    active  = data.get("active", "default")
+    rows = []
+    for name in presets:
+        mark = "✅ " if name == active else ""
+        rows.append([
+            InlineKeyboardButton(f"{mark}{name}", callback_data=f"ppf:ps_load:{name}"),
+            InlineKeyboardButton("🗑",             callback_data=f"ppf:ps_del:{name}"),
+        ])
+    rows.append([InlineKeyboardButton("💾 Сохранить текущие фильтры", callback_data="ppf:save")])
+    rows.append([InlineKeyboardButton("← Назад", callback_data="ppf:ps_back")])
+    header = "📋 *Сохранённые фильтры НМЦК*\nНажмите для применения:"
+    try:
+        await query.edit_message_text(header, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(rows))
+    except (BadRequest, TimedOut, NetworkError):
+        await query.message.reply_text(header, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(rows))
 
 
 async def cmd_ppfilters(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1509,6 +1664,7 @@ async def cmd_ppfilters(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     f = _load_priceplan_filter()
     context.user_data["pp_draft"] = f
+    context.user_data["pp_filter_view"] = "main"
     msg = await update.message.reply_text(
         f"⚙️ *Фильтры запросов цены*\n\n{_priceplan_summary(f)}",
         parse_mode=ParseMode.MARKDOWN,
@@ -1518,12 +1674,13 @@ async def cmd_ppfilters(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def _pp_refresh(query, context) -> None:
-    f = context.user_data.get("pp_draft", _load_priceplan_filter())
+    f    = context.user_data.get("pp_draft", _load_priceplan_filter())
+    view = context.user_data.get("pp_filter_view", "main")
     try:
         await query.edit_message_text(
             f"⚙️ *Фильтры запросов цены*\n\n{_priceplan_summary(f)}",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=_pp_filter_keyboard(f),
+            reply_markup=_get_pp_filter_kb(f, view),
         )
     except (BadRequest, TimedOut, NetworkError):
         pass
@@ -1536,7 +1693,15 @@ async def callback_ppfilter(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     sub   = parts[1]
     f     = context.user_data.setdefault("pp_draft", _load_priceplan_filter())
 
-    if sub == "status":
+    if sub == "open":
+        context.user_data["pp_filter_view"] = parts[2]
+        await _pp_refresh(query, context)
+
+    elif sub == "back":
+        context.user_data["pp_filter_view"] = "main"
+        await _pp_refresh(query, context)
+
+    elif sub == "status":
         val      = parts[2]
         statuses = f.setdefault("statuses", [])
         if val in statuses:
@@ -1549,13 +1714,15 @@ async def callback_ppfilter(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         val      = parts[2]
         frm_key  = "publish_date_from" if sub == "pub_date" else "update_date_from"
         to_key   = "publish_date_to"   if sub == "pub_date" else "update_date_to"
-        if val == "info":
-            await _qanswer(query)
-            return
-        elif val == "today":
+        if val == "today":
             f[frm_key] = f[to_key] = "today"
         elif val == "yesterday":
             f[frm_key] = f[to_key] = "yesterday"
+        elif val == "week":
+            import datetime as _dt
+            today = _dt.date.today()
+            f[frm_key] = (today - _dt.timedelta(days=6)).strftime("%d.%m.%Y")
+            f[to_key]  = today.strftime("%d.%m.%Y")
         elif val == "clear":
             f[frm_key] = f[to_key] = None
         elif val == "custom":
@@ -1563,11 +1730,18 @@ async def callback_ppfilter(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             context.user_data["pp_filter_msg_id"] = query.message.message_id
             label = "размещения" if sub == "pub_date" else "обновления"
             await query.message.reply_text(
-                f"Введите период даты {label} в формате `ДД.ММ.ГГГГ-ДД.ММ.ГГГГ`\n"
-                f"Например: `01.05.2026-15.05.2026`",
+                f"Введите период даты {label}:\n"
+                f"• Одна дата: `01.05.2026`\n"
+                f"• Период: `01.05.2026-31.05.2026`",
                 parse_mode=ParseMode.MARKDOWN,
             )
             return
+        await _pp_refresh(query, context)
+
+    elif sub == "reset":
+        context.user_data["pp_draft"] = deepcopy(DEFAULT_PRICEPLAN_FILTER)
+        context.user_data["pp_filter_view"] = "main"
+        _save_priceplan_filter(context.user_data["pp_draft"])
         await _pp_refresh(query, context)
 
     elif sub == "kw":
@@ -1597,7 +1771,6 @@ async def callback_ppfilter(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     elif sub == "run":
         _save_priceplan_filter(f)
         await query.message.reply_text("▶️ Запускаю поиск…")
-        # Эмулируем вызов cmd_priceplan через обновление
         class _FakeMsg:
             chat = query.message.chat
             from_user = query.from_user
@@ -1607,6 +1780,42 @@ async def callback_ppfilter(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             effective_chat = query.message.chat
             effective_user = query.from_user
         await cmd_priceplan(_FakeUpdate(), context)
+
+    elif sub == "presets":
+        await _show_pp_presets_menu(query, context)
+
+    elif sub == "save":
+        context.user_data["await_input"]      = "pp_preset_name"
+        context.user_data["pp_filter_msg_id"] = query.message.message_id
+        await query.message.reply_text("Введите название для сохранения:")
+
+    elif sub == "ps_load":
+        name = parts[2]
+        data = load_pp_presets()
+        if name in data["presets"]:
+            data["active"] = name
+            _save_pp_presets(data)
+            context.user_data["pp_draft"] = deepcopy(data["presets"][name])
+            context.user_data["pp_filter_view"] = "main"
+            _save_priceplan_filter(context.user_data["pp_draft"])
+            await _pp_refresh(query, context)
+
+    elif sub == "ps_del":
+        name = parts[2]
+        if name == "default":
+            await query.answer("Нельзя удалить фильтр «default»", show_alert=True)
+            return
+        data = load_pp_presets()
+        if name in data["presets"]:
+            del data["presets"][name]
+            if data.get("active") == name:
+                data["active"] = "default"
+            _save_pp_presets(data)
+        await _show_pp_presets_menu(query, context)
+
+    elif sub == "ps_back":
+        context.user_data["pp_filter_view"] = "main"
+        await _pp_refresh(query, context)
 
 
 def _pp_card_text(results: list[dict], idx: int) -> str:
@@ -2308,7 +2517,7 @@ async def callback_watch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         rows = [[InlineKeyboardButton(f"{h}ч", callback_data=f"wt:interval:{h}")] for h in WATCH_INTERVALS]
         await query.edit_message_text(
             f"➕ *Новая подписка*\n\n"
-            f"Будут использованы текущие фильтры пресета *{active_name}*:\n"
+            f"Будут использованы фильтры «*{active_name}*»:\n"
             f"{_filter_summary(active_flt)}\n\n"
             f"Как часто проверять новые закупки?",
             parse_mode=ParseMode.MARKDOWN,
@@ -2415,18 +2624,14 @@ async def callback_watch_pp(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     chat_id = query.message.chat_id
 
     if sub == "new":
-        flt  = _load_priceplan_filter()
-        name = "НМЦК"
+        flt = _load_priceplan_filter()
         context.user_data["ppwatch_draft_filter"] = {**flt, "_type": "priceplan"}
-        context.user_data["ppwatch_draft_name"]   = name
+        context.user_data["await_input"] = "ppwatch_name"
         await query.edit_message_text(
             f"➕ *Новая подписка НМЦК*\n\n"
             f"Фильтры:\n{_priceplan_summary(flt)}\n\n"
-            f"Как часто проверять новые запросы цены?",
+            f"Введите название подписки:",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton(f"{h}ч", callback_data=f"ppwt:interval:{h}") for h in WATCH_INTERVALS]],
-            ),
         )
 
     elif sub == "interval":

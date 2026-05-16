@@ -21,7 +21,7 @@
 
 ## saved_filters.json
 
-Пресеты фильтров бота. Управляется через `/filters`.
+Сохранённые фильтры закупок. Управляется через ⚙️ Фильтры поиска → 📋 Фильтры.
 
 ```json
 {
@@ -45,7 +45,7 @@
 ```
 
 **Примечания:**
-- Пресет `"default"` нельзя удалить
+- Фильтр `"default"` нельзя удалить
 - `"law": "both"` — два запроса к парсеру, результаты объединяются с дедупликацией по `number`
 - `"okpd2_section": null` + `"okpd2_key": null` = поиск по всем разделам
 - `"methods": []` = все способы закупки; `["af"]` = только аукционы
@@ -94,21 +94,30 @@
 
 ---
 
+## saved_pp_filters.json
+
+Сохранённые фильтры НМЦК. Управляется через ⚙️ Фильтры поиска (раздел НМЦК) → 📋 Фильтры.  
+Структура аналогична `saved_filters.json`. Фильтр `"default"` нельзя удалить.
+
+---
+
 ## priceplan_filter.json
 
-Фильтры раздела «Запросы цен товаров, работ, услуг» (`/ppfilters`).  
-ОКПД2 не поддерживается этим разделом ЕИС.
+Текущий активный фильтр НМЦК (рабочая копия). Перезаписывается при каждом запуске поиска и при загрузке сохранённого фильтра.
 
 ```json
 {
-  "keywords":   [],
-  "region_codes": [],
-  "customer_inn": "",
-  "statuses":   ["published", "proposed", "ended"],
-  "date_from":  "today",
-  "date_to":    "today",
-  "date_type":  "published"
+  "keywords":           [],
+  "region_codes":       [],
+  "customer_inn":       "",
+  "statuses":           ["published", "proposed", "ended", "cancelled"],
+  "publish_date_from":  "today",
+  "publish_date_to":    "today",
+  "update_date_from":   null,
+  "update_date_to":     null
 }
 ```
 
-`statuses`: любая комбинация `"published"` / `"proposed"` / `"ended"`.
+`statuses`: любая комбинация `"published"` / `"proposed"` / `"ended"` / `"cancelled"`.  
+Два независимых диапазона дат: `publish_date_from/to` и `update_date_from/to`.  
+ОКПД2 не поддерживается разделом pricereq ЕИС.

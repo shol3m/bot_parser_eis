@@ -12,16 +12,25 @@ Telegram → bot.py → parsers/zakupki.py → zakupki.gov.ru
 
 ## Ключевые паттерны
 
-### Фильтры и пресеты
+### Фильтры (двухуровневые меню)
+
+Оба раздела (закупки и НМЦК) используют компактное главное меню: одна кнопка = один параметр с текущим значением. Нажатие открывает подменю с детальным выбором и кнопкой «← Назад».
+
+**Подменю закупок:** ФЗ и способ / ОКПД2 / Дата / Сумма  
+**Подменю НМЦК:** Статус / Дата размещения / Дата обновления
 
 | Ключ user_data | Назначение |
 |----------------|-----------|
-| `draft` | Черновик фильтра, редактируется кнопками в `/filters` |
-| `await_input` | Тип ожидаемого текстового ввода (цена / дата / имя пресета / промпт / ключевые слова) |
-| `filter_msg_id` | message_id меню фильтров для обновления на месте |
-| `pending_filter` | Применённый фильтр, ждёт запуска `/fetch` |
+| `draft` | Черновик фильтра закупок |
+| `filter_view` | Текущий вид меню: `"main"` / `"law_method"` / `"okpd"` / `"date"` / `"sum"` |
+| `filter_msg_id` | message_id меню фильтров (для редактирования на месте) |
+| `pending_filter` | Фильтр для ближайшего `/fetch` |
+| `pp_draft` | Черновик фильтра НМЦК |
+| `pp_filter_view` | Текущий вид меню НМЦК: `"main"` / `"status"` / `"pub_date"` / `"upd_date"` |
+| `pp_filter_msg_id` | message_id меню фильтров НМЦК |
+| `await_input` | Тип ожидаемого текста: `keywords` / `customer_inn` / `price_from` / `price_to` / `date_range` / `okpd2_code` / `preset_name` / `pp_keywords` / `pp_customer` / `pp_pub_date_range` / `pp_upd_date_range` / `pp_preset_name` / `ppwatch_name` / `prompt_detailed` |
 
-После любого изменения меню обновляется на месте через `_refresh_filter_msg()` / `edit_message_text`.
+После любого изменения меню обновляется на месте через `_refresh_filter_msg()` / `_pp_refresh()`. Обе функции читают `filter_view` / `pp_filter_view` и рендерят соответствующую клавиатуру через `_get_filter_kb()` / `_get_pp_filter_kb()`.
 
 ### Пагинация (`/fetch`)
 
@@ -51,39 +60,74 @@ Telegram → bot.py → parsers/zakupki.py → zakupki.gov.ru
 ## Callback-схема
 
 ```
-f:law:{44|223|both}     — выбор ФЗ
-f:okpd:{J|all|custom}   — выбор раздела ОКПД2
-f:kw:{set|clear}        — ключевые слова
-f:price_from            — ввод минимальной суммы
-f:price_to              — ввод максимальной суммы
-f:date:{today|yesterday|custom}  — выбор даты
-f:save                  — сохранить пресет
-f:presets               — список пресетов
-f:apply                 — применить фильтры
+# Фильтры закупок (главное меню)
+f:open:{law_method|okpd|date|sum}  — открыть подменю
+f:back                             — вернуться в главное меню
+f:law:{44|223|both}                — выбор ФЗ (в подменю)
+f:method:{af|ca|pa}                — выбор способа (в подменю)
+f:okpd:{J|all|custom}              — выбор ОКПД2 (в подменю)
+f:kw:{set|clear}                   — ключевые слова
+f:customer:{set|clear}             — заказчик
+f:price_from / f:price_to          — ввод суммы (в подменю sum)
+f:date_type:{published|updated|end}— тип даты (в подменю date)
+f:date:{today|yesterday|week|custom}— выбор даты (в подменю date)
+f:save                             — сохранить фильтр (в списке фильтров)
+f:presets                          — открыть список сохранённых фильтров
+f:reset                            — сбросить всё к дефолту
+f:apply                            — запустить поиск с текущими фильтрами
 
-ps:load:{name}          — загрузить пресет
-ps:del:{name}           — удалить пресет
-ps:back                 — назад в меню фильтров
+# Сохранённые фильтры закупок
+ps:load:{name}  — загрузить фильтр
+ps:del:{name}   — удалить фильтр
+ps:back         — назад в меню фильтров
 
+# Фильтры НМЦК (главное меню)
+ppf:open:{status|pub_date|upd_date} — открыть подменю
+ppf:back                             — вернуться в главное меню
+ppf:status:{published|proposed|ended|cancelled} — переключить статус
+ppf:pub_date:{today|yesterday|week|clear|custom} — дата размещения
+ppf:upd_date:{today|yesterday|week|clear|custom} — дата обновления
+ppf:kw:{set|clear}                   — ключевые слова
+ppf:customer:{set|clear}             — заказчик
+ppf:reset                            — сбросить фильтры НМЦК
+ppf:run                              — запустить поиск НМЦК
+ppf:presets                          — список сохранённых фильтров НМЦК
+ppf:save                             — сохранить фильтр НМЦК
+ppf:ps_load:{name}                   — загрузить фильтр НМЦК
+ppf:ps_del:{name}                    — удалить фильтр НМЦК
+ppf:ps_back                          — назад в меню фильтров НМЦК
+
+# Пагинация
 pg:next / pg:prev / pg:skip  — листание карточек
 
+# Детальный анализ
 detail:{id}             — запустить детальный анализ
 da:toggle:{cid}:{idx}   — переключить выбор документа
 da:all:{cid}            — выбрать все документы
 da:none:{cid}           — снять все документы
 da:run:{cid}            — запустить анализ выбранных
 
-pr:edit                 — редактировать промпт
-pr:reset                — сбросить промпт к дефолту
+# Промпт
+pr:edit   — редактировать промпт
+pr:reset  — сбросить промпт к дефолту
 
-wt:new                  — создать вотч
-wt:interval:{h}         — выбрать интервал вотча
-wt:info:{id}            — информация о вотче
-wt:del:{id}             — удалить вотч
-wt:back                 — назад к списку вотчей
+# Подписки закупок
+wt:new           — создать подписку
+wt:interval:{h}  — выбрать интервал
+wt:info:{id}     — информация о подписке
+wt:del:{id}      — удалить подписку
+wt:back          — назад к списку
 
-sch:{HH:MM}             — установить расписание
-sch:off                 — отключить расписание
+# Подписки НМЦК
+ppwt:new           — создать подписку (→ ввод имени → ppwt:interval)
+ppwt:interval:{h}  — выбрать интервал
+ppwt:info:{id}     — информация о подписке
+ppwt:del:{id}      — удалить подписку
+ppwt:back          — назад к списку
+
+# Расписание
+sch:{HH:MM} / sch:off     — расписание закупок
+schpp:{HH:MM} / schpp:off — расписание НМЦК
 ```
 
 ---

@@ -1,0 +1,33 @@
+{
+  "active": "ЦОКР_НМЦК",
+  "presets": {
+    "default": {
+      "keywords": [],
+      "region_codes": [],
+      "customer_inn": "",
+      "statuses": [
+        "published",
+        "proposed",
+        "ended",
+        "cancelled"
+      ],
+      "publish_date_from": "today",
+      "publish_date_to": "today",
+      "update_date_from": null,
+      "update_date_to": null
+    },
+    "ЦОКР_НМЦК": {
+      "keywords": [],
+      "region_codes": [],
+      "customer_inn": "ФЕДЕРАЛЬНОЕ КАЗЕННОЕ УЧРЕЖДЕНИЕ \"ЦЕНТР ПО ОБЕСПЕЧЕНИЮ ДЕЯТЕЛЬНОСТИ КАЗНАЧЕЙСТВА РОССИИ\"",
+      "statuses": [
+        "published",
+        "proposed"
+      ],
+      "publish_date_from": "today",
+      "publish_date_to": "today",
+      "update_date_from": null,
+      "update_date_to": null
+    }
+  }
+}
