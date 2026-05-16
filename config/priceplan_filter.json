@@ -1,11 +1,13 @@
 {
   "keywords": [],
-  "okpd2_key": null,
-  "okpd2_section": null,
   "region_codes": [],
-  "customer_inn": "",
-  "statuses": ["published", "proposed", "ended"],
-  "date_from": "today",
-  "date_to": "today",
-  "date_type": "published"
+  "customer_inn": "ЦЕНТРАЛЬНОЕ ИНФОРМАЦИОННО-ТЕХНИЧЕСКОЕ ТАМОЖЕННОЕ УПРАВЛЕНИЕ",
+  "statuses": [
+    "published",
+    "proposed"
+  ],
+  "publish_date_from": "yesterday",
+  "publish_date_to": "yesterday",
+  "update_date_from": null,
+  "update_date_to": null
 }

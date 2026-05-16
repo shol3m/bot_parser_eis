@@ -35,7 +35,7 @@ def _resolve_date(value: str | None) -> str | None:
 
 def _get(url: str, params: dict | None = None) -> requests.Response | None:
     try:
-        r = SESSION.get(url, params=params, proxies=PROXY, timeout=30, verify=False)
+        r = SESSION.get(url, params=params, proxies=PROXY, timeout=(15, 30), verify=False)
         r.raise_for_status()
         return r
     except Exception as e:
@@ -56,16 +56,15 @@ def build_priceplan_params(filters: dict, page: int = 1) -> dict:
     # Статус запроса (можно несколько)
     statuses = filters.get("statuses", ["published", "proposed", "ended"])
     for s in statuses:
-        if s in ("published", "proposed", "ended"):
+        if s in ("published", "proposed", "ended", "cancelled"):
             params[s] = "on"
 
-    # Ключевые слова / объект закупки
-    if filters.get("keywords"):
-        params["searchString"] = " ".join(filters["keywords"])
-
-    # Заказчик (наименование или ИНН)
+    # Строка поиска: ключевые слова + заказчик объединяются в searchString
+    search_parts = list(filters.get("keywords") or [])
     if filters.get("customer_inn"):
-        params["customerTitle"] = filters["customer_inn"].strip()
+        search_parts.append(filters["customer_inn"].strip())
+    if search_parts:
+        params["searchString"] = " ".join(search_parts)
 
     # Регион заказчика
     region_codes = filters.get("region_codes", [])
@@ -74,17 +73,17 @@ def build_priceplan_params(filters: dict, page: int = 1) -> dict:
         if len(region_codes) > 1:
             params["customerPlaceCodes"] = ",".join(str(c) for c in region_codes)
 
-    # Дата
-    date_from = _resolve_date(filters.get("date_from"))
-    date_to   = _resolve_date(filters.get("date_to"))
-    date_type = filters.get("date_type", "published")
+    # Дата размещения
+    pub_from = _resolve_date(filters.get("publish_date_from") or filters.get("date_from") if filters.get("date_type", "published") != "updated" else None)
+    pub_to   = _resolve_date(filters.get("publish_date_to")   or filters.get("date_to")   if filters.get("date_type", "published") != "updated" else None)
+    if pub_from: params["publishDateFrom"] = pub_from
+    if pub_to:   params["publishDateTo"]   = pub_to
 
-    if date_type == "updated":
-        if date_from: params["updateDateFrom"] = date_from
-        if date_to:   params["updateDateTo"]   = date_to
-    else:
-        if date_from: params["publishDateFrom"] = date_from
-        if date_to:   params["publishDateTo"]   = date_to
+    # Дата обновления
+    upd_from = _resolve_date(filters.get("update_date_from") or (filters.get("date_from") if filters.get("date_type") == "updated" else None))
+    upd_to   = _resolve_date(filters.get("update_date_to")   or (filters.get("date_to")   if filters.get("date_type") == "updated" else None))
+    if upd_from: params["updateDateFrom"] = upd_from
+    if upd_to:   params["updateDateTo"]   = upd_to
 
     return params
 
@@ -144,25 +143,31 @@ def parse_priceplan_results(html: str) -> list[dict]:
 
             date_map = {}
             for block in card.select("div.data-block"):
-                title_el = block.select_one(".data-block__title")
-                value_el = block.select_one(".data-block__value")
-                if title_el and value_el:
-                    key = title_el.text.strip().lower()
-                    val = value_el.text.strip()
-                    if "размещ" in key:
+                titles = block.select(".data-block__title")
+                values = block.select(".data-block__value")
+                for i, (t_el, v_el) in enumerate(zip(titles, values)):
+                    tl  = t_el.text.strip().lower()
+                    val = " ".join(v_el.text.split())  # нормализуем пробелы/переносы
+                    if not val:
+                        continue
+                    # Сначала — матчинг по ключевым словам (работает если кодировка корректна)
+                    if "разме" in tl:
                         date_map["date_placement"] = val
-                    elif "окончан" in key or "подач" in key or "заявк" in key or "предлож" in key:
-                        date_map["date_end"] = val
-                    elif "обновл" in key or "измен" in key:
+                    elif "обновл" in tl or "измен" in tl:
                         date_map["date_updated"] = val
-                    elif "ответ" in key or "предоставл" in key:
-                        date_map["date_response"] = val
-            if not date_map:
-                vals = card.select("div.data-block__value")
-                if vals:
-                    date_map["date_placement"] = vals[0].text.strip()
-                if len(vals) > 1:
-                    date_map["date_end"] = vals[1].text.strip()
+                    elif "подач" in tl or "предлож" in tl or "приём" in tl or "прием" in tl:
+                        date_map["date_end"] = val
+                    elif "исполн" in tl or "контракт" in tl:
+                        date_map["date_contract"] = val
+                    # Позиционный fallback (кодировка сломана — матчим по позиции и наличию даты)
+                    elif i == 0 and re.search(r"\d{2}\.\d{2}\.\d{4}", val):
+                        date_map.setdefault("date_placement", val)
+                    elif i == 1 and re.search(r"\d{2}\.\d{2}\.\d{4}", val):
+                        date_map.setdefault("date_updated", val)
+                    elif i == 2 and re.search(r"\d{2}\.\d{2}\.\d{4}", val):
+                        date_map.setdefault("date_end", val)
+                    elif i == 3:
+                        date_map.setdefault("date_contract", val)
             item.update(date_map)
 
             item["price"] = ""
