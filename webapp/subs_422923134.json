@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "id": 3,
+    "name": "ЦИТТУ_Закупки",
+    "interval_h": 1,
+    "active": true,
+    "last_run": ""
+  }
+]
