@@ -937,14 +937,14 @@ function renderSubs() {
 }
 
 function deleteSub(watchId, name) {
-  tg.showAlert(`Удалить подписку «${name}»?`);
-  setTimeout(() => {
+  tg.showConfirm(`Удалить подписку «${name}»?`, (ok) => {
+    if (!ok) return;
     try {
       tg.sendData(JSON.stringify({ action: 'watch_delete', watch_id: watchId }));
     } catch(e) {
       tg.showAlert('Доступно только внутри Telegram.');
     }
-  }, 100);
+  });
 }
 
 // ── Пресеты ───────────────────────────────────────────────────────
