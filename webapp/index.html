@@ -3,24 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Госзакупки v2</title>
+  <title>Госзакупки</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg:        var(--tg-theme-bg-color, #ffffff);
+      --bg:        var(--tg-theme-bg-color, #fff);
       --bg2:       var(--tg-theme-secondary-bg-color, #f1f1f1);
-      --text:      var(--tg-theme-text-color, #000000);
-      --hint:      var(--tg-theme-hint-color, #999999);
+      --text:      var(--tg-theme-text-color, #000);
+      --hint:      var(--tg-theme-hint-color, #999);
       --link:      var(--tg-theme-link-color, #2481cc);
       --accent:    var(--tg-theme-button-color, #2481cc);
-      --accent-fg: var(--tg-theme-button-text-color, #ffffff);
+      --accent-fg: var(--tg-theme-button-text-color, #fff);
       --divider:   color-mix(in srgb, var(--text) 12%, transparent);
-      --card-bg:   var(--bg);
       --radius:    12px;
     }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       background: var(--bg2);
       color: var(--text);
@@ -28,290 +25,213 @@
       font-size: 15px;
       line-height: 1.4;
       min-height: 100vh;
-      padding-bottom: env(safe-area-inset-bottom, 16px);
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 60px);
     }
 
     /* ── Шапка ── */
     .header {
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      position: sticky; top: 0; z-index: 100;
       background: var(--bg);
       border-bottom: 1px solid var(--divider);
-      padding: 10px 16px 10px;
+      padding: 10px 16px 6px;
     }
-    .header-title {
-      font-size: 17px;
-      font-weight: 600;
-      text-align: center;
-      color: var(--text);
+    .header-row1 {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
     }
-    .header-sub {
-      font-size: 12px;
-      color: var(--hint);
-      text-align: center;
-      margin-top: 2px;
+    .header-title { font-size: 17px; font-weight: 700; }
+    .header-sub   { font-size: 12px; color: var(--hint); }
+    .btn-refresh  {
+      background: none; border: none; font-size: 18px;
+      color: var(--hint); cursor: pointer; padding: 2px 4px;
+    }
+    .btn-refresh:active { opacity: .5; }
+
+    /* Переключатель раздела в шапке */
+    .section-switch {
+      display: flex; gap: 6px;
+    }
+    .sec-btn {
+      flex: 1; padding: 6px 8px; border-radius: 8px;
+      border: 1.5px solid var(--divider); background: transparent;
+      font-size: 13px; font-weight: 600; color: var(--hint);
+      cursor: pointer; text-align: center; transition: all .15s;
+    }
+    .sec-btn.active {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
     }
 
     /* ── Таб-бар ── */
     .tabs {
-      display: flex;
-      background: var(--bg);
+      position: sticky; top: var(--header-h, 100px); z-index: 99;
+      display: flex; background: var(--bg);
       border-bottom: 1px solid var(--divider);
-      overflow-x: auto;
-      scrollbar-width: none;
     }
-    .tabs::-webkit-scrollbar { display: none; }
     .tab {
-      flex: 1;
-      min-width: 80px;
-      padding: 10px 12px;
-      text-align: center;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--hint);
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      white-space: nowrap;
-      transition: color .15s, border-color .15s;
-      user-select: none;
+      flex: 1; padding: 10px 4px; text-align: center;
+      font-size: 13px; font-weight: 500; color: var(--hint);
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s; user-select: none;
     }
-    .tab.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-    /* ── Контент ── */
-    .page { display: none; padding: 12px 12px 0; }
+    /* ── Страницы ── */
+    .page { display: none; padding: 10px 12px 0; }
     .page.active { display: block; }
 
-    /* ── Карточка закупки ── */
+    /* ── Карточки закупок ── */
     .card {
-      background: var(--card-bg);
-      border-radius: var(--radius);
-      padding: 14px 14px 12px;
-      margin-bottom: 8px;
+      background: var(--bg); border-radius: var(--radius);
+      padding: 12px 14px; margin-bottom: 8px;
       box-shadow: 0 1px 3px rgba(0,0,0,.07);
     }
-    .card-header {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
+    .card-head { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
     .score-badge {
-      flex-shrink: 0;
-      width: 38px;
-      height: 38px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      font-weight: 700;
-      color: #fff;
+      flex-shrink: 0; width: 36px; height: 36px; border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: #fff;
     }
-    .score-low    { background: #999; }
-    .score-mid    { background: #f5a623; }
-    .score-high   { background: #27ae60; }
-    .score-best   { background: #7c3aed; }
+    .score-low  { background: #aaa; }
+    .score-mid  { background: #f5a623; }
+    .score-high { background: #27ae60; }
+    .score-best { background: #7c3aed; }
+
+    .status-badge {
+      flex-shrink: 0; padding: 4px 8px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; color: #fff;
+      align-self: center;
+    }
+    .status-published { background: #27ae60; }
+    .status-proposed  { background: #2481cc; }
+    .status-ended     { background: #999; }
+    .status-cancelled { background: #e74c3c; }
 
     .card-subject {
-      font-size: 14px;
-      font-weight: 600;
-      line-height: 1.35;
-      color: var(--text);
-      flex: 1;
+      font-size: 14px; font-weight: 600; line-height: 1.35;
+      color: var(--text); flex: 1;
     }
     .card-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px 12px;
-      margin-bottom: 8px;
+      display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 6px;
     }
-    .meta-item {
-      font-size: 13px;
-      color: var(--hint);
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
+    .meta-item { font-size: 13px; color: var(--hint); }
     .meta-item strong { color: var(--text); }
-    .card-comment {
-      font-size: 13px;
-      color: var(--hint);
-      line-height: 1.4;
-      margin-bottom: 10px;
-    }
-    .card-actions {
-      display: flex;
-      gap: 8px;
-    }
+    .card-dates { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
+    .date-item  { font-size: 12px; color: var(--hint); }
+    .date-item.deadline { color: #e74c3c; font-weight: 500; }
+    .card-comment { font-size: 13px; color: var(--hint); margin-bottom: 10px; line-height: 1.4; }
+    .card-actions { display: flex; gap: 8px; }
+
+    /* ── Кнопки ── */
     .btn {
-      flex: 1;
-      padding: 8px 12px;
-      border-radius: 8px;
-      border: none;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      text-align: center;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      transition: opacity .15s;
+      flex: 1; padding: 8px 10px; border-radius: 8px; border: none;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      text-align: center; text-decoration: none;
+      display: flex; align-items: center; justify-content: center;
+      gap: 4px; transition: opacity .15s;
     }
     .btn:active { opacity: .7; }
-    .btn-primary { background: var(--accent); color: var(--accent-fg); }
+    .btn-primary   { background: var(--accent); color: var(--accent-fg); }
     .btn-secondary { background: var(--bg2); color: var(--text); }
-
-    /* ── Фильтры ── */
-    .filter-section {
-      background: var(--card-bg);
-      border-radius: var(--radius);
-      overflow: hidden;
-      margin-bottom: 12px;
-    }
-    .filter-section-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--hint);
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      padding: 12px 14px 6px;
-    }
-    .filter-row {
-      display: flex;
-      align-items: center;
-      padding: 12px 14px;
-      border-top: 1px solid var(--divider);
-      gap: 10px;
-    }
-    .filter-row:first-of-type { border-top: none; }
-    .filter-label { flex: 1; font-size: 15px; color: var(--text); }
-    .filter-value { font-size: 15px; color: var(--hint); }
-    .filter-value.active { color: var(--accent); font-weight: 500; }
-
-    /* Сегментный контрол */
-    .seg-ctrl {
-      display: flex;
-      background: var(--bg2);
-      border-radius: 8px;
-      padding: 2px;
-      gap: 2px;
-    }
-    .seg-btn {
-      flex: 1;
-      padding: 6px 8px;
-      border-radius: 6px;
-      border: none;
+    .btn-danger    { background: color-mix(in srgb,#e74c3c 15%,transparent); color: #e74c3c; }
+    .btn-full      { width: 100%; padding: 13px; font-size: 15px; font-weight: 600; }
+    .btn-outline   {
       background: transparent;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--hint);
-      cursor: pointer;
+      border: 1.5px solid var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── Поиск и сортировка (результаты) ── */
+    .search-bar {
+      background: var(--bg); border-radius: 10px;
+      padding: 8px 12px; display: flex; align-items: center;
+      gap: 8px; margin-bottom: 8px;
+    }
+    .search-bar input {
+      flex: 1; background: none; border: none; outline: none;
+      font-size: 15px; color: var(--text);
+    }
+    .search-bar input::placeholder { color: var(--hint); }
+    .search-icon { color: var(--hint); }
+
+    .sort-bar {
+      display: flex; gap: 6px; margin-bottom: 8px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .sort-bar::-webkit-scrollbar { display: none; }
+    .sort-chip {
+      flex-shrink: 0; padding: 5px 12px; border-radius: 20px;
+      border: none; background: var(--bg); color: var(--hint);
+      font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
       transition: all .15s;
     }
+    .sort-chip.active { background: var(--accent); color: var(--accent-fg); }
+
+    .results-count { font-size: 13px; color: var(--hint); margin-bottom: 8px; }
+
+    /* ── Фильтры ── */
+    .filter-block {
+      background: var(--bg); border-radius: var(--radius);
+      overflow: hidden; margin-bottom: 10px;
+    }
+    .filter-block-title {
+      font-size: 11px; font-weight: 600; color: var(--hint);
+      text-transform: uppercase; letter-spacing: .5px;
+      padding: 10px 14px 4px;
+    }
+    .filter-row {
+      padding: 10px 14px;
+      border-top: 1px solid var(--divider);
+    }
+    .filter-row:first-of-type { border-top: none; }
+    .filter-label { font-size: 13px; color: var(--hint); margin-bottom: 6px; }
+
+    .seg-ctrl {
+      display: flex; background: var(--bg2); border-radius: 8px; padding: 2px; gap: 2px;
+    }
+    .seg-btn {
+      flex: 1; padding: 6px 4px; border-radius: 6px; border: none;
+      background: transparent; font-size: 13px; font-weight: 500;
+      color: var(--hint); cursor: pointer; transition: all .15s;
+      white-space: nowrap;
+    }
     .seg-btn.active {
-      background: var(--bg);
-      color: var(--text);
+      background: var(--bg); color: var(--text);
       box-shadow: 0 1px 3px rgba(0,0,0,.12);
     }
 
-    /* Поле ввода */
+    /* Чипы для мультиселекта (статусы НМЦК, способы закупки) */
+    .chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      padding: 5px 12px; border-radius: 20px;
+      border: 1.5px solid var(--divider); background: transparent;
+      font-size: 13px; color: var(--hint); cursor: pointer; transition: all .15s;
+    }
+    .chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
     .input-field {
-      width: 100%;
-      padding: 10px 14px;
-      border: none;
-      border-radius: 8px;
-      background: var(--bg2);
-      color: var(--text);
-      font-size: 15px;
-      outline: none;
+      width: 100%; padding: 9px 12px; border: none; border-radius: 8px;
+      background: var(--bg2); color: var(--text); font-size: 15px; outline: none;
     }
     .input-field::placeholder { color: var(--hint); }
+    .price-row { display: flex; gap: 8px; }
+    .price-row .input-field { text-align: right; }
 
-    /* ── Подписки ── */
-    .sub-card {
-      background: var(--card-bg);
-      border-radius: var(--radius);
-      padding: 14px;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    /* Сохранённые фильтры — горизонтальный скролл */
+    .presets-scroll {
+      display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+      padding: 8px 14px 6px;
     }
-    .sub-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      background: color-mix(in srgb, var(--accent) 15%, transparent);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      flex-shrink: 0;
-    }
-    .sub-info { flex: 1; }
-    .sub-name { font-size: 15px; font-weight: 600; }
-    .sub-meta { font-size: 13px; color: var(--hint); margin-top: 2px; }
-    .sub-indicator {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .sub-active   { background: #27ae60; }
-    .sub-inactive { background: var(--hint); }
-
-    /* ── Инфо-блок активного пресета ── */
-    .preset-info {
-      background: color-mix(in srgb, var(--accent) 10%, transparent);
-      border-radius: var(--radius);
-      padding: 12px 14px;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .preset-info-body { flex: 1; }
-    .preset-info-name {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--accent);
-    }
-    .preset-info-detail {
-      font-size: 12px;
-      color: var(--hint);
-      margin-top: 2px;
-      line-height: 1.4;
-    }
-    .preset-icon { font-size: 22px; }
-
-    /* ── Кнопка "искать в боте" ── */
-    .btn-bot {
-      background: color-mix(in srgb, var(--accent) 15%, transparent);
-      color: var(--accent);
-      font-weight: 600;
-    }
-
-    /* ── Выбор пресета ── */
-    .preset-chips {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      padding: 4px 14px 12px;
-    }
+    .presets-scroll::-webkit-scrollbar { display: none; }
     .preset-chip {
-      padding: 4px 12px;
-      border-radius: 20px;
-      border: 1.5px solid var(--divider);
-      background: transparent;
-      font-size: 13px;
-      color: var(--hint);
-      cursor: pointer;
-      transition: all .15s;
+      flex-shrink: 0; padding: 5px 14px; border-radius: 20px;
+      border: 1.5px solid var(--divider); background: transparent;
+      font-size: 13px; color: var(--hint); cursor: pointer; white-space: nowrap; transition: all .15s;
     }
     .preset-chip.active {
       border-color: var(--accent);
@@ -319,803 +239,824 @@
       background: color-mix(in srgb, var(--accent) 10%, transparent);
     }
 
-    /* ── Пустые состояния ── */
-    .empty {
-      text-align: center;
-      padding: 60px 24px;
-      color: var(--hint);
+    /* ── Подписки ── */
+    .sub-card {
+      background: var(--bg); border-radius: var(--radius);
+      padding: 12px 14px; margin-bottom: 8px;
+      display: flex; align-items: center; gap: 12px;
     }
-    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .sub-icon {
+      width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+    }
+    .sub-info { flex: 1; min-width: 0; }
+    .sub-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sub-meta { font-size: 12px; color: var(--hint); margin-top: 2px; }
+    .sub-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .sub-dot.on  { background: #27ae60; }
+    .sub-dot.off { background: var(--hint); }
+
+    /* ── Пустое состояние ── */
+    .empty { text-align: center; padding: 50px 24px; color: var(--hint); }
+    .empty-icon  { font-size: 44px; margin-bottom: 10px; }
     .empty-title { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-    .empty-text { font-size: 14px; line-height: 1.5; }
+    .empty-text  { font-size: 14px; line-height: 1.5; }
 
     /* ── Лоадер ── */
-    .loader-wrap { text-align: center; padding: 60px 24px; }
+    .loader { text-align: center; padding: 50px 24px; }
     .spinner {
-      width: 28px; height: 28px;
-      border: 3px solid var(--divider);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-      display: inline-block;
-      margin-bottom: 12px;
+      width: 26px; height: 26px; border: 3px solid var(--divider);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .8s linear infinite; display: inline-block; margin-bottom: 10px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .loader-text { color: var(--hint); font-size: 14px; }
 
-    /* ── Счётчик результатов ── */
-    .results-count {
-      font-size: 13px;
-      color: var(--hint);
-      padding: 4px 0 10px;
-    }
-
-    /* ── Переключатель разделов (закупки / запросы цены) ── */
-    .section-switch {
-      display: flex;
-      gap: 8px;
-      padding: 8px 12px 0;
-    }
-    .section-btn {
-      flex: 1;
-      padding: 8px;
-      border-radius: 8px;
-      border: 1.5px solid var(--divider);
-      background: transparent;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--hint);
-      cursor: pointer;
-      text-align: center;
-      transition: all .15s;
-    }
-    .section-btn.active {
-      border-color: var(--accent);
-      background: color-mix(in srgb, var(--accent) 12%, transparent);
-      color: var(--accent);
-    }
-
     /* ── Экран «поиск запущен» ── */
-    .search-launched {
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 60px 24px;
-      text-align: center;
+    .launched {
+      display: none; flex-direction: column; align-items: center;
+      justify-content: center; padding: 60px 24px; text-align: center;
     }
-    .search-launched.visible { display: flex; }
-    .search-launched-icon { font-size: 48px; margin-bottom: 16px; }
-    .search-launched-title { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
-    .search-launched-text  { font-size: 14px; color: var(--hint); line-height: 1.5; }
+    .launched.visible { display: flex; }
+    .launched-icon  { font-size: 48px; margin-bottom: 14px; }
+    .launched-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .launched-text  { font-size: 14px; color: var(--hint); line-height: 1.5; }
 
-    /* ── Сортировка ── */
-    .sort-bar {
-      display: flex;
-      gap: 6px;
-      padding: 0 0 10px;
-      overflow-x: auto;
-      scrollbar-width: none;
+    /* ── Разделитель секции ── */
+    .section-label {
+      font-size: 11px; font-weight: 700; color: var(--hint);
+      text-transform: uppercase; letter-spacing: .5px;
+      padding: 14px 0 6px;
     }
-    .sort-bar::-webkit-scrollbar { display: none; }
-    .sort-chip {
-      flex-shrink: 0;
-      padding: 5px 12px;
-      border-radius: 20px;
-      border: none;
-      background: var(--bg);
-      color: var(--hint);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all .15s;
-      white-space: nowrap;
-    }
-    .sort-chip.active {
-      background: var(--accent);
-      color: var(--accent-fg);
-    }
-
-    /* ── Дата в карточке ── */
-    .card-dates {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 8px;
-    }
-    .date-item {
-      font-size: 12px;
-      color: var(--hint);
-    }
-    .date-item.deadline { color: #e74c3c; font-weight: 500; }
-
-    /* ── Кнопка обновить в шапке ── */
-    .header-refresh {
-      position: absolute;
-      right: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      font-size: 18px;
-      cursor: pointer;
-      color: var(--hint);
-      padding: 4px;
-      line-height: 1;
-    }
-    .header-refresh:active { opacity: .5; }
-    .header { position: relative; }
-
-    /* ── Поиск в шапке ── */
-    .search-bar {
-      background: var(--bg2);
-      border-radius: 10px;
-      padding: 8px 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 8px 12px;
-    }
-    .search-bar input {
-      flex: 1;
-      background: none;
-      border: none;
-      outline: none;
-      font-size: 15px;
-      color: var(--text);
-    }
-    .search-bar input::placeholder { color: var(--hint); }
-    .search-icon { color: var(--hint); font-size: 16px; }
   </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-title">Госзакупки</div>
-  <div class="header-sub" id="header-sub">Загрузка...</div>
-  <button class="header-refresh" id="btn-refresh" title="Обновить данные">↻</button>
-</div>
-
-<div class="tabs">
-  <div class="tab active" data-tab="results">Результаты</div>
-  <div class="tab" data-tab="filters">Фильтры</div>
-  <div class="tab" data-tab="subs">Подписки</div>
-</div>
-
-<!-- Страница результатов -->
-<div class="page active" id="tab-results">
-  <div class="section-switch">
-    <button class="section-btn active" data-section="procurement">🔍 Закупки</button>
-    <button class="section-btn" data-section="priceplan">💰 Запросы цены</button>
+<!-- Шапка -->
+<div class="header" id="header">
+  <div class="header-row1">
+    <div>
+      <div class="header-title">Госзакупки</div>
+      <div class="header-sub" id="header-sub">Загрузка…</div>
+    </div>
+    <button class="btn-refresh" id="btn-refresh">↻</button>
   </div>
+  <div class="section-switch">
+    <button class="sec-btn active" data-sec="zakupki">🔍 Закупки</button>
+    <button class="sec-btn"        data-sec="nmck">💰 НМЦК</button>
+  </div>
+</div>
+
+<!-- Таб-бар -->
+<div class="tabs" id="tabs">
+  <div class="tab active" data-tab="results">Результаты</div>
+  <div class="tab"        data-tab="filters">Фильтры</div>
+  <div class="tab"        data-tab="subs">Подписки</div>
+</div>
+
+<!-- ════ Результаты ════ -->
+<div class="page active" id="tab-results">
   <div class="search-bar">
     <span class="search-icon">🔍</span>
-    <input type="text" id="search-input" placeholder="Поиск по предмету…">
+    <input id="search-input" type="text" placeholder="Поиск по предмету или заказчику…">
   </div>
-  <div class="sort-bar">
+
+  <!-- Сортировка — только для закупок -->
+  <div class="sort-bar" id="sort-bar">
     <button class="sort-chip active" data-sort="score">🏆 Рейтинг</button>
     <button class="sort-chip" data-sort="price_desc">💰 Цена ↓</button>
     <button class="sort-chip" data-sort="price_asc">💰 Цена ↑</button>
     <button class="sort-chip" data-sort="date">📅 Дата</button>
   </div>
-  <div id="results-count" class="results-count"></div>
+
+  <div class="results-count" id="results-count"></div>
   <div id="results-list">
-    <div class="loader-wrap">
-      <div class="spinner"></div>
-      <div class="loader-text">Загрузка закупок…</div>
-    </div>
+    <div class="loader"><div class="spinner"></div><div class="loader-text">Загрузка…</div></div>
   </div>
 </div>
 
-<!-- Страница фильтров -->
+<!-- ════ Фильтры ════ -->
 <div class="page" id="tab-filters">
 
-  <!-- Экран «поиск запущен» (показывается перед закрытием) -->
-  <div class="search-launched" id="search-launched">
-    <div class="search-launched-icon">🔍</div>
-    <div class="search-launched-title">Поиск запущен</div>
-    <div class="search-launched-text">Бот получил фильтры и ищет закупки.<br>Когда найдёт — пришлёт уведомление с кнопкой «Открыть результаты».</div>
+  <!-- Экран «запущен» -->
+  <div class="launched" id="search-launched">
+    <div class="launched-icon">🔍</div>
+    <div class="launched-title" id="launched-title">Поиск запущен</div>
+    <div class="launched-text">Бот получил фильтры и начал поиск.<br>Когда найдёт — пришлёт уведомление с кнопкой «Открыть результаты».</div>
   </div>
 
-  <div id="filters-content" style="padding: 4px 0 12px">
+  <div id="filters-content">
 
-    <!-- Переключатель раздела -->
-    <div class="section-switch" style="padding: 0 0 12px">
-      <button class="section-btn active" data-filter-section="procurement">🔍 Закупки</button>
-      <button class="section-btn" data-filter-section="priceplan">💰 Запросы цены</button>
-    </div>
+    <!-- ── Закупки: фильтры ── -->
+    <div id="f-zakupki">
 
-    <!-- Блок активного пресета из бота -->
-    <div class="preset-info" id="preset-info" style="display:none">
-      <span class="preset-icon">⚙️</span>
-      <div class="preset-info-body">
-        <div class="preset-info-name" id="preset-info-name">Пресет</div>
-        <div class="preset-info-detail" id="preset-info-detail"></div>
-      </div>
-    </div>
-
-    <!-- Пресеты -->
-    <div class="filter-section" id="presets-section" style="display:none">
-      <div class="filter-section-title">Пресет бота</div>
-      <div class="preset-chips" id="preset-chips"></div>
-    </div>
-
-    <!-- Параметры нового поиска -->
-    <div class="filter-section">
-      <div class="filter-section-title">Параметры поиска</div>
-
-      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="font-size:13px;color:var(--hint)">Закон</div>
-        <div class="seg-ctrl" id="law-ctrl">
-          <button class="seg-btn active" data-law="44">44‑ФЗ</button>
-          <button class="seg-btn" data-law="223">223‑ФЗ</button>
-          <button class="seg-btn" data-law="both">Оба</button>
-        </div>
+      <!-- Сохранённые фильтры -->
+      <div class="filter-block" id="z-presets-block" style="display:none">
+        <div class="filter-block-title">Сохранённые фильтры</div>
+        <div class="presets-scroll" id="z-presets-chips"></div>
       </div>
 
-      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="font-size:13px;color:var(--hint)">ОКПД2</div>
-        <div class="seg-ctrl" id="okpd-ctrl">
-          <button class="seg-btn active" data-okpd="J">Раздел J (ИТ)</button>
-          <button class="seg-btn" data-okpd="all">Все разделы</button>
-        </div>
-      </div>
+      <div class="filter-block">
+        <div class="filter-block-title">Параметры поиска</div>
 
-      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="font-size:13px;color:var(--hint)">Дата размещения</div>
-        <div class="seg-ctrl" id="date-ctrl">
-          <button class="seg-btn active" data-date="today">Сегодня</button>
-          <button class="seg-btn" data-date="yesterday">Вчера</button>
-          <button class="seg-btn" data-date="week">Неделя</button>
-        </div>
-      </div>
-
-      <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="font-size:13px;color:var(--hint)">Ключевые слова</div>
-        <input class="input-field" id="kw-search" type="text" placeholder="разработка, информационная система">
-      </div>
-
-      <div class="filter-row price-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="font-size:13px;color:var(--hint)">Цена, ₽</div>
-        <div style="display:flex;gap:8px">
-          <input class="input-field" id="price-from-search" type="number" placeholder="От" style="flex:1;text-align:right">
-          <input class="input-field" id="price-to-search" type="number" placeholder="До" style="flex:1;text-align:right">
-        </div>
-      </div>
-    </div>
-
-    <button class="btn btn-primary" style="width:100%;padding:14px;margin-top:4px;font-size:16px" id="run-search">
-      🔍 Запустить поиск
-    </button>
-
-    <!-- Разделитель: фильтр текущих результатов -->
-    <div id="priceplan-note" style="display:none;background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:10px;padding:10px 14px;margin-top:12px;font-size:13px;color:var(--hint)">
-      💡 В запросах цены нет НМЦ — цена не отображается. Доступны: ключевые слова, ОКПД2, заказчик, дата.
-    </div>
-    <div style="margin-top:20px">
-      <div class="filter-section-title" style="padding:0 0 8px">Фильтр текущих результатов</div>
-      <div class="filter-section">
-        <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-          <div style="font-size:13px;color:var(--hint)">Ключевые слова</div>
-          <input class="input-field" id="kw-input" type="text" placeholder="поиск по загруженным закупкам">
-        </div>
-        <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-          <div style="font-size:13px;color:var(--hint)">Цена, ₽</div>
-          <div style="display:flex;gap:8px">
-            <input class="input-field" id="price-from" type="number" placeholder="От" style="flex:1;text-align:right">
-            <input class="input-field" id="price-to" type="number" placeholder="До" style="flex:1;text-align:right">
+        <div class="filter-row">
+          <div class="filter-label">Закон</div>
+          <div class="seg-ctrl" id="z-law">
+            <button class="seg-btn active" data-val="44">44-ФЗ</button>
+            <button class="seg-btn" data-val="223">223-ФЗ</button>
+            <button class="seg-btn" data-val="both">Оба</button>
           </div>
         </div>
-        <div class="filter-row" style="flex-direction:column;align-items:stretch;gap:6px">
-          <div style="font-size:13px;color:var(--hint)">Минимальный рейтинг</div>
-          <div class="seg-ctrl">
-            <button class="seg-btn active" data-score="0">Все</button>
-            <button class="seg-btn" data-score="4">4+</button>
-            <button class="seg-btn" data-score="6">6+</button>
-            <button class="seg-btn" data-score="8">8+</button>
+
+        <div class="filter-row">
+          <div class="filter-label">Способ закупки</div>
+          <div class="chips-row" id="z-methods">
+            <button class="chip active" data-val="af">ЭА</button>
+            <button class="chip active" data-val="ca">Конкурс</button>
+            <button class="chip active" data-val="pa">ЗП</button>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">ОКПД2</div>
+          <div class="seg-ctrl" id="z-okpd">
+            <button class="seg-btn active" data-val="J">Раздел J (ИТ)</button>
+            <button class="seg-btn" data-val="all">Все разделы</button>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Тип даты</div>
+          <div class="seg-ctrl" id="z-datetype">
+            <button class="seg-btn active" data-val="published">Размещение</button>
+            <button class="seg-btn" data-val="updated">Обновление</button>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Период</div>
+          <div class="seg-ctrl" id="z-date">
+            <button class="seg-btn active" data-val="today">Сегодня</button>
+            <button class="seg-btn" data-val="yesterday">Вчера</button>
+            <button class="seg-btn" data-val="week">Неделя</button>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Заказчик (ИНН или название)</div>
+          <input class="input-field" id="z-customer" type="text" placeholder="Не задан">
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Ключевые слова</div>
+          <input class="input-field" id="z-keywords" type="text" placeholder="разработка, портал, интеграция">
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Цена, ₽</div>
+          <div class="price-row">
+            <input class="input-field" id="z-price-from" type="number" placeholder="От">
+            <input class="input-field" id="z-price-to"   type="number" placeholder="До">
           </div>
         </div>
       </div>
-      <button class="btn btn-secondary" style="width:100%;padding:12px;margin-top:4px" id="apply-filters">
-        Применить к результатам
-      </button>
+
+      <button class="btn btn-primary btn-full" id="z-run">🔍 Запустить поиск закупок</button>
     </div>
-  </div>  <!-- /filters-content -->
+
+    <!-- ── НМЦК: фильтры ── -->
+    <div id="f-nmck" style="display:none">
+
+      <!-- Сохранённые фильтры НМЦК -->
+      <div class="filter-block" id="n-presets-block" style="display:none">
+        <div class="filter-block-title">Сохранённые фильтры</div>
+        <div class="presets-scroll" id="n-presets-chips"></div>
+      </div>
+
+      <div class="filter-block">
+        <div class="filter-block-title">Параметры поиска</div>
+
+        <div class="filter-row">
+          <div class="filter-label">Статусы</div>
+          <div class="chips-row" id="n-statuses">
+            <button class="chip active" data-val="published">Опубликован</button>
+            <button class="chip active" data-val="proposed">Предложен</button>
+            <button class="chip" data-val="ended">Завершён</button>
+            <button class="chip" data-val="cancelled">Отменён</button>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Дата публикации</div>
+          <div class="seg-ctrl" id="n-pub-date">
+            <button class="seg-btn active" data-val="today">Сегодня</button>
+            <button class="seg-btn" data-val="yesterday">Вчера</button>
+            <button class="seg-btn" data-val="week">Неделя</button>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Дата обновления</div>
+          <div class="seg-ctrl" id="n-upd-date">
+            <button class="seg-btn active" data-val="">Не задана</button>
+            <button class="seg-btn" data-val="today">Сегодня</button>
+            <button class="seg-btn" data-val="yesterday">Вчера</button>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Заказчик (ИНН или название)</div>
+          <input class="input-field" id="n-customer" type="text" placeholder="Не задан">
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-label">Ключевые слова</div>
+          <input class="input-field" id="n-keywords" type="text" placeholder="разработка, поставка">
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="n-run">💰 Запустить поиск НМЦК</button>
+    </div>
+
+  </div><!-- /filters-content -->
 </div>
 
-<!-- Страница подписок -->
+<!-- ════ Подписки ════ -->
 <div class="page" id="tab-subs">
-  <div id="subs-list" style="padding-top:4px">
-    <div class="loader-wrap">
-      <div class="spinner"></div>
-      <div class="loader-text">Загрузка подписок…</div>
-    </div>
+  <div id="subs-list">
+    <div class="loader"><div class="spinner"></div><div class="loader-text">Загрузка…</div></div>
+  </div>
+  <div style="margin-top: 12px">
+    <button class="btn btn-outline btn-full" id="btn-create-sub">+ Создать подписку</button>
   </div>
 </div>
 
 <script>
-// Защита от отсутствия Telegram SDK (при открытии в браузере вне Telegram)
+// ── Telegram SDK ──────────────────────────────────────────────────
 const tg = window.Telegram?.WebApp ?? {
-  ready: ()=>{}, expand: ()=>{}, close: ()=>{},
-  showAlert: (t)=>alert(t),
-  sendData: ()=>{ alert('Доступно только в Telegram'); },
-  openTelegramLink: (u)=>{ window.open(u, '_blank'); },
-  initDataUnsafe: {},
-  themeParams: {},
-  onEvent: ()=>{},
+  ready:()=>{}, expand:()=>{}, close:()=>{},
+  showAlert:(t)=>alert(t),
+  sendData:()=>alert('Доступно только в Telegram'),
+  openTelegramLink:(u)=>window.open(u,'_blank'),
+  initDataUnsafe:{}, themeParams:{}, onEvent:()=>{},
 };
-tg.ready();
-tg.expand();
-
-// Применяем тему
+tg.ready(); tg.expand();
 document.documentElement.style.setProperty('--accent', tg.themeParams?.button_color || '#2481cc');
 
-let allContracts = [];
-let allPriceplans = [];
-let activeSection = 'procurement';   // результаты: какой раздел показываем
-let filterSection = 'procurement';   // фильтры: для какого раздела
-let activeLaw = 'all';
-let activeSort = 'score';
-let activeMinScore = 0;
-let searchLaw = '44';
-let searchOkpd = 'J';
-let searchDate = 'today';
-let botUsername = '';
+// ── Глобальное состояние ──────────────────────────────────────────
+let activeSection = 'zakupki';  // zakupki | nmck
+let activeTab     = 'results';
+let activeSort    = 'score';
+
+let allZakupki   = [];
+let allNmck      = [];
+let allSubs      = [];
+let zPresets     = {};  // { name: filterObj }
+let nPresets     = {};
+let zActivePreset = '';
+let nActivePreset = '';
+let botUsername  = '';
 let currentUserId = '';
-let botPresets = [];
-let activeBotPreset = '';
-let activeBotFilter = null;
 
-// ── localStorage helpers ────────────────────────────────────────
-const LS_KEY = 'goszakupki_filters_v1';
-function saveFiltersToLS() {
+// Состояние фильтра закупок
+const ZF = { law:'44', methods:['af','ca','pa'], okpd:'J', dateType:'published', date:'today', customer:'', keywords:'', priceFrom:'', priceTo:'' };
+// Состояние фильтра НМЦК
+const NF = { statuses:['published','proposed'], pubDate:'today', updDate:'', customer:'', keywords:'' };
+
+const STATUS_LABEL = { published:'Опубликован', proposed:'Предложен', ended:'Завершён', cancelled:'Отменён' };
+const STATUS_CLS   = { published:'status-published', proposed:'status-proposed', ended:'status-ended', cancelled:'status-cancelled' };
+
+// ── LS helpers ────────────────────────────────────────────────────
+function lsSave() {
+  try { localStorage.setItem('gz_sec', activeSection); } catch(e){}
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify({
-      searchLaw, searchOkpd, searchDate,
-      kw:       document.getElementById('kw-search')?.value || '',
-      priceFrom:document.getElementById('price-from-search')?.value || '',
-      priceTo:  document.getElementById('price-to-search')?.value || '',
-      filterSection,
+    localStorage.setItem('gz_zf', JSON.stringify({
+      ...ZF,
+      keywords: document.getElementById('z-keywords').value,
+      customer: document.getElementById('z-customer').value,
+      priceFrom: document.getElementById('z-price-from').value,
+      priceTo:   document.getElementById('z-price-to').value,
     }));
-  } catch(e) {}
-}
-function loadFiltersFromLS() {
+  } catch(e){}
   try {
-    const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-    if (saved.searchLaw) {
-      searchLaw = saved.searchLaw;
-      document.querySelectorAll('#law-ctrl [data-law]').forEach(b => {
-        b.classList.toggle('active', b.dataset.law === searchLaw);
-      });
-    }
-    if (saved.searchOkpd) {
-      searchOkpd = saved.searchOkpd;
-      document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(b => {
-        b.classList.toggle('active', b.dataset.okpd === searchOkpd);
-      });
-    }
-    if (saved.searchDate) {
-      searchDate = saved.searchDate;
-      document.querySelectorAll('#date-ctrl [data-date]').forEach(b => {
-        b.classList.toggle('active', b.dataset.date === searchDate);
-      });
-    }
-    if (saved.kw)        document.getElementById('kw-search').value = saved.kw;
-    if (saved.priceFrom) document.getElementById('price-from-search').value = saved.priceFrom;
-    if (saved.priceTo)   document.getElementById('price-to-search').value   = saved.priceTo;
-    if (saved.filterSection) switchFilterSection(saved.filterSection, false);
-  } catch(e) {}
+    localStorage.setItem('gz_nf', JSON.stringify({
+      ...NF,
+      keywords: document.getElementById('n-keywords').value,
+      customer: document.getElementById('n-customer').value,
+    }));
+  } catch(e){}
+}
+function lsLoad() {
+  try {
+    const sec = localStorage.getItem('gz_sec');
+    if (sec) activeSection = sec;
+  } catch(e){}
+  try {
+    const z = JSON.parse(localStorage.getItem('gz_zf') || '{}');
+    if (z.law)      ZF.law      = z.law;
+    if (z.methods)  ZF.methods  = z.methods;
+    if (z.okpd)     ZF.okpd     = z.okpd;
+    if (z.dateType) ZF.dateType = z.dateType;
+    if (z.date)     ZF.date     = z.date;
+    if (z.customer !== undefined) ZF.customer = z.customer;
+    if (z.keywords  !== undefined) ZF.keywords  = z.keywords;
+    if (z.priceFrom !== undefined) ZF.priceFrom = z.priceFrom;
+    if (z.priceTo   !== undefined) ZF.priceTo   = z.priceTo;
+  } catch(e){}
+  try {
+    const n = JSON.parse(localStorage.getItem('gz_nf') || '{}');
+    if (n.statuses)  NF.statuses  = n.statuses;
+    if (n.pubDate)   NF.pubDate   = n.pubDate;
+    if (n.updDate !== undefined) NF.updDate = n.updDate;
+    if (n.customer !== undefined) NF.customer = n.customer;
+    if (n.keywords  !== undefined) NF.keywords  = n.keywords;
+  } catch(e){}
 }
 
-// ── Таб-навигация ──────────────────────────────────────────────
+// ── Применить состояние к DOM ─────────────────────────────────────
+function applyZfToDom() {
+  setSeg('z-law',      ZF.law);
+  setMultiChips('z-methods',  ZF.methods);
+  setSeg('z-okpd',    ZF.okpd);
+  setSeg('z-datetype', ZF.dateType);
+  setSeg('z-date',    ZF.date);
+  document.getElementById('z-customer').value   = ZF.customer;
+  document.getElementById('z-keywords').value   = ZF.keywords;
+  document.getElementById('z-price-from').value = ZF.priceFrom;
+  document.getElementById('z-price-to').value   = ZF.priceTo;
+}
+function applyNfToDom() {
+  setMultiChips('n-statuses', NF.statuses);
+  setSeg('n-pub-date', NF.pubDate);
+  setSeg('n-upd-date', NF.updDate);
+  document.getElementById('n-customer').value = NF.customer;
+  document.getElementById('n-keywords').value = NF.keywords;
+}
+function setSeg(id, val) {
+  document.querySelectorAll(`#${id} [data-val]`).forEach(b =>
+    b.classList.toggle('active', b.dataset.val === val));
+}
+function setMultiChips(id, vals) {
+  document.querySelectorAll(`#${id} [data-val]`).forEach(b =>
+    b.classList.toggle('active', vals.includes(b.dataset.val)));
+}
+
+// ── Переключение раздела ──────────────────────────────────────────
+function switchSection(sec) {
+  activeSection = sec;
+  document.querySelectorAll('[data-sec]').forEach(b =>
+    b.classList.toggle('active', b.dataset.sec === sec));
+
+  const isNmck = sec === 'nmck';
+  document.getElementById('f-zakupki').style.display = isNmck ? 'none' : '';
+  document.getElementById('f-nmck').style.display    = isNmck ? '' : 'none';
+  document.getElementById('sort-bar').style.display  = isNmck ? 'none' : '';
+
+  renderResults();
+  renderSubs();
+  lsSave();
+}
+
+document.querySelectorAll('[data-sec]').forEach(b =>
+  b.addEventListener('click', () => switchSection(b.dataset.sec)));
+
+// ── Таб-навигация ─────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab, .page').forEach(el => el.classList.remove('active'));
+    activeTab = tab.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    document.getElementById('tab-' + activeTab).classList.add('active');
   });
 });
 
-// ── Переключатель разделов в Results ───────────────────────────
-document.querySelectorAll('.section-switch [data-section]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.section-switch [data-section]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeSection = btn.dataset.section;
-    const contracts = activeSection === 'priceplan' ? allPriceplans : allContracts;
-    renderContracts(contracts, document.getElementById('search-input').value.trim().toLowerCase());
+// ── Сегментные контролы закупок ───────────────────────────────────
+function bindSeg(id, stateKey, stateObj, onchange) {
+  document.querySelectorAll(`#${id} [data-val]`).forEach(btn => {
+    btn.addEventListener('click', () => {
+      setSeg(id, btn.dataset.val);
+      stateObj[stateKey] = btn.dataset.val;
+      if (onchange) onchange(btn.dataset.val);
+      lsSave();
+    });
   });
-});
-
-// ── Переключатель разделов в Filters ───────────────────────────
-function switchFilterSection(section, save = true) {
-  filterSection = section;
-  document.querySelectorAll('[data-filter-section]').forEach(b => {
-    b.classList.toggle('active', b.dataset.filterSection === section);
-  });
-  // Скрыть/показать поля цены (нет в запросах цены)
-  const priceRows = document.querySelectorAll('.price-row');
-  priceRows.forEach(el => el.style.display = section === 'priceplan' ? 'none' : '');
-  document.getElementById('priceplan-note').style.display = section === 'priceplan' ? 'block' : 'none';
-  // Обновить текст кнопки поиска
-  document.getElementById('run-search').textContent =
-    section === 'priceplan' ? '💰 Запустить поиск запросов цены' : '🔍 Запустить поиск закупок';
-  if (save) saveFiltersToLS();
 }
-document.querySelectorAll('[data-filter-section]').forEach(btn => {
-  btn.addEventListener('click', () => switchFilterSection(btn.dataset.filterSection));
+bindSeg('z-law',      'law',      ZF);
+bindSeg('z-okpd',    'okpd',     ZF);
+bindSeg('z-datetype','dateType',  ZF);
+bindSeg('z-date',    'date',     ZF);
+bindSeg('n-pub-date','pubDate',  NF);
+bindSeg('n-upd-date','updDate',  NF);
+
+// Мультиселект чипы
+function bindMultiChips(id, stateArr, onchange) {
+  document.querySelectorAll(`#${id} [data-val]`).forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.val;
+      const idx = stateArr.indexOf(v);
+      if (idx === -1) stateArr.push(v);
+      else stateArr.splice(idx, 1);
+      btn.classList.toggle('active', stateArr.includes(v));
+      if (onchange) onchange();
+      lsSave();
+    });
+  });
+}
+bindMultiChips('z-methods', ZF.methods);
+bindMultiChips('n-statuses', NF.statuses);
+
+// Текстовые поля
+['z-customer','z-keywords','z-price-from','z-price-to'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', lsSave);
+});
+['n-customer','n-keywords'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', lsSave);
 });
 
-// ── Контролы нового поиска ─────────────────────────────────────
-document.querySelectorAll('#law-ctrl [data-law]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#law-ctrl [data-law]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    searchLaw = btn.dataset.law;
-    saveFiltersToLS();
-  });
-});
-document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#okpd-ctrl [data-okpd]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    searchOkpd = btn.dataset.okpd;
-    saveFiltersToLS();
-  });
-});
-document.querySelectorAll('#date-ctrl [data-date]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#date-ctrl [data-date]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    searchDate = btn.dataset.date;
-    saveFiltersToLS();
-  });
-});
-
-// ── Запуск поиска через бот (tg.sendData) ──────────────────────
-document.getElementById('run-search').addEventListener('click', () => {
-  saveFiltersToLS();
-  const kw = document.getElementById('kw-search').value.trim();
-  const pf = document.getElementById('price-from-search')?.value;
-  const pt = document.getElementById('price-to-search')?.value;
-
-  const payload = {
-    action:        filterSection === 'priceplan' ? 'priceplan_search' : 'search',
-    law:           searchLaw,
-    okpd2_section: searchOkpd === 'all' ? null : searchOkpd,
-    date:          searchDate,
-    keywords:      kw,
-    price_from:    pf ? parseFloat(pf) : null,
-    price_to:      pt ? parseFloat(pt) : null,
+// ── Запуск поиска ─────────────────────────────────────────────────
+function buildZakupkiPayload() {
+  return {
+    action:        'search',
+    law:           ZF.law,
+    methods:       ZF.methods,
+    okpd2_section: ZF.okpd === 'all' ? null : ZF.okpd,
+    date_type:     ZF.dateType,
+    date:          ZF.date,
+    customer_inn:  document.getElementById('z-customer').value.trim(),
+    keywords:      document.getElementById('z-keywords').value.trim(),
+    price_from:    parseFloat(document.getElementById('z-price-from').value) || null,
+    price_to:      parseFloat(document.getElementById('z-price-to').value)   || null,
   };
+}
+function buildNmckPayload() {
+  return {
+    action:           'priceplan_search',
+    keywords:         document.getElementById('n-keywords').value.trim(),
+    customer_inn:     document.getElementById('n-customer').value.trim(),
+    statuses:         [...NF.statuses],
+    publish_date_from: NF.pubDate,
+    publish_date_to:   NF.pubDate,
+    update_date_from:  NF.updDate || null,
+    update_date_to:    NF.updDate || null,
+  };
+}
 
-  // Показываем экран «запущен» на 1.5 сек перед закрытием
+function launchSearch(payload, icon, title) {
+  lsSave();
   document.getElementById('filters-content').style.display = 'none';
-  document.getElementById('search-launched').classList.add('visible');
-
+  const launched = document.getElementById('search-launched');
+  document.getElementById('launched-title').textContent = title;
+  launched.querySelector('.launched-icon').textContent = icon;
+  launched.classList.add('visible');
   setTimeout(() => {
     try {
       tg.sendData(JSON.stringify(payload));
     } catch(e) {
-      // При открытии вне Telegram — скрываем экран обратно
-      document.getElementById('search-launched').classList.remove('visible');
+      launched.classList.remove('visible');
       document.getElementById('filters-content').style.display = '';
-      tg.showAlert('Функция доступна только внутри Telegram.');
+      tg.showAlert('Доступно только внутри Telegram.');
     }
-  }, 1200);
+  }, 1000);
+}
+
+document.getElementById('z-run').addEventListener('click', () =>
+  launchSearch(buildZakupkiPayload(), '🔍', 'Поиск закупок запущен'));
+document.getElementById('n-run').addEventListener('click', () =>
+  launchSearch(buildNmckPayload(), '💰', 'Поиск НМЦК запущен'));
+
+// ── Кнопка «Создать подписку» ─────────────────────────────────────
+document.getElementById('btn-create-sub').addEventListener('click', () => {
+  try {
+    tg.sendData(JSON.stringify({ action: 'open_watch', section: activeSection }));
+  } catch(e) {
+    tg.showAlert('Доступно только внутри Telegram.');
+  }
 });
 
-// ── Сортировка ─────────────────────────────────────────────────
+// ── Сортировка (закупки) ──────────────────────────────────────────
 document.querySelectorAll('[data-sort]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('[data-sort]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     activeSort = btn.dataset.sort;
-    renderContracts(allContracts, document.getElementById('search-input').value.trim().toLowerCase());
+    renderResults();
   });
 });
 
-// ── Кнопка обновить ────────────────────────────────────────────
+// ── Поиск по тексту ───────────────────────────────────────────────
+document.getElementById('search-input').addEventListener('input', function() {
+  renderResults(this.value.trim().toLowerCase());
+});
+
+// ── Обновить данные ───────────────────────────────────────────────
 document.getElementById('btn-refresh').addEventListener('click', () => {
-  document.getElementById('results-list').innerHTML = `<div class="loader-wrap"><div class="spinner"></div><div class="loader-text">Обновление…</div></div>`;
+  document.getElementById('results-list').innerHTML = '<div class="loader"><div class="spinner"></div><div class="loader-text">Обновление…</div></div>';
   loadData();
 });
 
-// ── Фильтр результатов: рейтинг ────────────────────────────────
-document.querySelectorAll('[data-score]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('[data-score]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeMinScore = parseInt(btn.dataset.score) || 0;
-  });
-});
-
-// ── Поиск по тексту ────────────────────────────────────────────
-document.getElementById('search-input').addEventListener('input', function() {
-  renderContracts(allContracts, this.value.trim().toLowerCase());
-});
-
-// ── Рендер карточек ────────────────────────────────────────────
-function scoreClass(s) {
-  if (s >= 8) return 'score-best';
-  if (s >= 6) return 'score-high';
-  if (s >= 4) return 'score-mid';
-  return 'score-low';
+// ── Утилиты ───────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function fmtPrice(p) {
   if (!p) return 'н/д';
-  return p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const n = parseFloat(String(p).replace(/[^\d.]/g,''));
+  if (!n) return 'н/д';
+  return n.toLocaleString('ru') + ' ₽';
 }
-
-function sortContracts(list) {
-  const copy = [...list];
-  if (activeSort === 'score') {
-    copy.sort((a, b) => (b.quick_score || 0) - (a.quick_score || 0));
-  } else if (activeSort === 'price_desc') {
-    copy.sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
-  } else if (activeSort === 'price_asc') {
-    copy.sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
-  } else if (activeSort === 'date') {
-    copy.sort((a, b) => (b.date_updated || '').localeCompare(a.date_updated || ''));
-  }
-  return copy;
-}
-
 function parsePrice(p) {
-  if (!p) return 0;
-  return parseFloat(String(p).replace(/[^\d.]/g, '')) || 0;
+  return parseFloat(String(p||'').replace(/[^\d.]/g,'')) || 0;
 }
-
-function isDeadlineSoon(dateStr) {
-  if (!dateStr) return false;
-  const parts = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-  if (!parts) return false;
-  const d = new Date(parts[3], parts[2] - 1, parts[1]);
-  const diff = (d - Date.now()) / 86400000;
+function isDeadlineSoon(d) {
+  if (!d) return false;
+  const m = d.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if (!m) return false;
+  const diff = (new Date(m[3], m[2]-1, m[1]) - Date.now()) / 86400000;
   return diff >= 0 && diff <= 3;
 }
 
-function renderContracts(contracts, query = '') {
+// ── Рендер результатов ────────────────────────────────────────────
+function sortZakupki(list) {
+  const c = [...list];
+  if      (activeSort === 'price_desc') c.sort((a,b) => parsePrice(b.price) - parsePrice(a.price));
+  else if (activeSort === 'price_asc')  c.sort((a,b) => parsePrice(a.price) - parsePrice(b.price));
+  else if (activeSort === 'date')       c.sort((a,b) => (b.date_updated||'').localeCompare(a.date_updated||''));
+  else c.sort((a,b) => (b.quick_score||0) - (a.quick_score||0));
+  return c;
+}
+
+function renderResults(query = '') {
   const list = document.getElementById('results-list');
-  let filtered = query
-    ? contracts.filter(c => (c.subject||'').toLowerCase().includes(query) || (c.customer||'').toLowerCase().includes(query))
-    : contracts;
+  if (activeSection === 'nmck') {
+    renderNmckCards(allNmck, query, list);
+  } else {
+    renderZakupkiCards(allZakupki, query, list);
+  }
+}
 
-  filtered = sortContracts(filtered);
+function renderZakupkiCards(data, query, list) {
+  let items = query
+    ? data.filter(c => (c.subject||'').toLowerCase().includes(query) || (c.customer||'').toLowerCase().includes(query))
+    : data;
+  items = sortZakupki(items);
 
-  const total = allContracts.length;
-  const shown = filtered.length;
-  document.getElementById('results-count').textContent =
-    shown ? (shown < total ? `Показано: ${shown} из ${total}` : `Закупок: ${shown}`) : '';
+  const cnt = document.getElementById('results-count');
+  cnt.textContent = items.length
+    ? (items.length < data.length ? `Показано: ${items.length} из ${data.length}` : `Закупок: ${items.length}`)
+    : '';
 
-  if (!filtered.length) {
-    list.innerHTML = `<div class="empty">
-      <div class="empty-icon">🔍</div>
-      <div class="empty-title">Закупок не найдено</div>
-      <div class="empty-text">Попробуйте изменить фильтры или ключевые слова</div>
-    </div>`;
+  if (!items.length) {
+    list.innerHTML = data.length
+      ? `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Нет совпадений</div><div class="empty-text">Попробуйте изменить запрос</div></div>`
+      : `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Нет результатов</div><div class="empty-text">Запустите поиск во вкладке «Фильтры»</div></div>`;
     return;
   }
 
-  list.innerHTML = filtered.map(c => {
+  list.innerHTML = items.map(c => {
     const score   = c.quick_score || 0;
-    const subj    = (c.subject || 'Предмет не указан').slice(0, 200);
-    const price   = fmtPrice(c.price);
-    const cust    = (c.customer || '').slice(0, 80);
-    const comment = (c.quick_comment || '').slice(0, 180);
-    const url     = c.url || 'https://zakupki.gov.ru';
+    const sCls    = score>=8 ? 'score-best' : score>=6 ? 'score-high' : score>=4 ? 'score-mid' : 'score-low';
+    const subj    = esc((c.subject||'Предмет не указан').slice(0, 200));
+    const cust    = esc((c.customer||'').slice(0, 80));
+    const comment = esc((c.quick_comment||'').slice(0, 180));
+    const url     = esc(c.url || 'https://zakupki.gov.ru');
     const dbId    = c.id || 0;
-    const datePlacement = c.date_placement || '';
-    const dateUpdated   = c.date_updated  || '';
-    const dateEnd       = c.date_end      || '';
-    const soon          = isDeadlineSoon(dateEnd);
+    const soon    = isDeadlineSoon(c.date_end);
 
-    const datesHtml = (datePlacement || dateUpdated || dateEnd) ? `
+    const datesHtml = (c.date_placement || c.date_updated || c.date_end) ? `
       <div class="card-dates">
-        ${datePlacement ? `<span class="date-item">📋 ${escHtml(datePlacement)}</span>` : ''}
-        ${dateUpdated   ? `<span class="date-item">🔄 ${escHtml(dateUpdated)}</span>`   : ''}
-        ${dateEnd       ? `<span class="date-item ${soon ? 'deadline' : ''}">⏳ до ${escHtml(dateEnd)}${soon ? ' !' : ''}</span>` : ''}
+        ${c.date_placement ? `<span class="date-item">📋 ${esc(c.date_placement)}</span>` : ''}
+        ${c.date_updated   ? `<span class="date-item">🔄 ${esc(c.date_updated)}</span>` : ''}
+        ${c.date_end       ? `<span class="date-item${soon?' deadline':''}">⏳ до ${esc(c.date_end)}${soon?' ⚠':''}` + `</span>` : ''}
       </div>` : '';
 
     return `<div class="card">
-      <div class="card-header">
-        <div class="score-badge ${scoreClass(score)}">${score > 0 ? score : '–'}</div>
-        <div class="card-subject">${escHtml(subj)}</div>
+      <div class="card-head">
+        <div class="score-badge ${sCls}">${score > 0 ? score : '–'}</div>
+        <div class="card-subject">${subj}</div>
       </div>
       <div class="card-meta">
-        <div class="meta-item">💰 <strong>${escHtml(price)}</strong></div>
-        ${cust ? `<div class="meta-item">🏛 ${escHtml(cust)}</div>` : ''}
+        <div class="meta-item">💰 <strong>${fmtPrice(c.price)}</strong></div>
+        ${cust ? `<div class="meta-item">🏛 ${cust}</div>` : ''}
       </div>
       ${datesHtml}
-      ${comment ? `<div class="card-comment">${escHtml(comment)}</div>` : ''}
+      ${comment ? `<div class="card-comment">${comment}</div>` : ''}
       <div class="card-actions">
-        ${dbId ? `<button class="btn btn-primary" onclick="analyzeContract(${dbId})">🤖 Анализ</button>` : ''}
-        <a class="btn ${dbId ? 'btn-secondary' : 'btn-primary'}" href="${escHtml(url)}" target="_blank">🔗 Открыть</a>
+        ${dbId ? `<button class="btn btn-primary" onclick="doAnalyze(${dbId})">🤖 Анализ</button>` : ''}
+        <a class="btn ${dbId ? 'btn-secondary' : 'btn-primary'}" href="${url}" target="_blank">🔗 ЕИС</a>
       </div>
     </div>`;
   }).join('');
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function renderNmckCards(data, query, list) {
+  let items = query
+    ? data.filter(c => (c.subject||'').toLowerCase().includes(query) || (c.customer||'').toLowerCase().includes(query))
+    : data;
+
+  const cnt = document.getElementById('results-count');
+  cnt.textContent = items.length ? `Запросов цены: ${items.length}` : '';
+
+  if (!items.length) {
+    list.innerHTML = data.length
+      ? `<div class="empty"><div class="empty-icon">💰</div><div class="empty-title">Нет совпадений</div><div class="empty-text">Попробуйте изменить запрос</div></div>`
+      : `<div class="empty"><div class="empty-icon">💰</div><div class="empty-title">Нет результатов</div><div class="empty-text">Запустите поиск НМЦК во вкладке «Фильтры»</div></div>`;
+    return;
+  }
+
+  list.innerHTML = items.map(c => {
+    const st    = c.status || '';
+    const sCls  = STATUS_CLS[st] || 'status-ended';
+    const sLbl  = STATUS_LABEL[st] || st;
+    const subj  = esc((c.subject||'Предмет не указан').slice(0, 200));
+    const cust  = esc((c.customer||'').slice(0, 80));
+    const url   = esc(c.url || 'https://zakupki.gov.ru');
+
+    const datesHtml = (c.date_placement || c.date_updated || c.date_end || c.date_response) ? `
+      <div class="card-dates">
+        ${c.date_placement  ? `<span class="date-item">📋 ${esc(c.date_placement)}</span>` : ''}
+        ${c.date_updated    ? `<span class="date-item">🔄 ${esc(c.date_updated)}</span>` : ''}
+        ${c.date_end        ? `<span class="date-item">⏳ до ${esc(c.date_end)}</span>` : ''}
+        ${c.date_response   ? `<span class="date-item">📨 ответ до ${esc(c.date_response)}</span>` : ''}
+      </div>` : '';
+
+    return `<div class="card">
+      <div class="card-head">
+        <div class="status-badge ${sCls}">${esc(sLbl)}</div>
+        <div class="card-subject">${subj}</div>
+      </div>
+      ${cust ? `<div class="card-meta"><div class="meta-item">🏛 ${cust}</div></div>` : ''}
+      ${datesHtml}
+      <div class="card-actions">
+        <a class="btn btn-primary" href="${url}" target="_blank">🔗 Открыть ЕИС</a>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-// ── Анализ: открываем бот с командой через deep link ──────────
-function analyzeContract(dbId) {
+// ── Анализ ────────────────────────────────────────────────────────
+function doAnalyze(dbId) {
   if (!botUsername) {
     tg.showAlert('Имя бота неизвестно. Запустите анализ из чата бота.');
     return;
   }
-  // Закрываем Mini App и отправляем команду в бот
   tg.close();
   tg.openTelegramLink(`https://t.me/${botUsername}?start=analyze_${dbId}`);
 }
 
-// ── Применить фильтры (клиентская фильтрация) ─────────────────
-document.getElementById('apply-filters').addEventListener('click', () => {
-  const kw        = document.getElementById('kw-input').value.trim().toLowerCase();
-  const priceFrom = parseFloat(document.getElementById('price-from').value) || 0;
-  const priceTo   = parseFloat(document.getElementById('price-to').value)   || Infinity;
-
-  const filtered = allContracts.filter(c => {
-    const matchKw    = !kw || (c.subject||'').toLowerCase().includes(kw) || (c.customer||'').toLowerCase().includes(kw);
-    const price      = parsePrice(c.price);
-    const matchP     = (!priceFrom || price >= priceFrom) && (!isFinite(priceTo) || price <= priceTo);
-    const matchScore = (c.quick_score || 0) >= activeMinScore;
-    const matchLaw   = activeLaw === 'all' || (c._law || '') === activeLaw;
-    return matchKw && matchP && matchScore && matchLaw;
-  });
-
-  document.querySelectorAll('.tab, .page').forEach(el => el.classList.remove('active'));
-  document.querySelector('[data-tab="results"]').classList.add('active');
-  document.getElementById('tab-results').classList.add('active');
-  renderContracts(filtered);
-});
-
-function renderSubs(subs) {
+// ── Рендер подписок ───────────────────────────────────────────────
+function renderSubs() {
   const el = document.getElementById('subs-list');
-  if (!subs.length) {
+  const filtered = activeSection === 'nmck'
+    ? allSubs.filter(s => s._type === 'nmck' || s._type === 'priceplan')
+    : allSubs.filter(s => !s._type || s._type === 'zakupki');
+
+  if (!filtered.length) {
+    const label = activeSection === 'nmck' ? 'НМЦК' : 'закупок';
     el.innerHTML = `<div class="empty">
       <div class="empty-icon">🔔</div>
-      <div class="empty-title">Нет активных подписок</div>
-      <div class="empty-text">Создайте подписку в боте — она будет отображаться здесь</div>
+      <div class="empty-title">Нет подписок</div>
+      <div class="empty-text">Нажмите «+ Создать подписку» — бот запустит мастер создания подписки на ${label}</div>
     </div>`;
     return;
   }
-  el.innerHTML = subs.map(s => `
-    <div class="sub-card">
-      <div class="sub-icon">🔔</div>
+
+  el.innerHTML = filtered.map(s => {
+    const active = s.active;
+    return `<div class="sub-card">
+      <div class="sub-icon">${activeSection === 'nmck' ? '💰' : '🔔'}</div>
       <div class="sub-info">
-        <div class="sub-name">${escHtml(s.name)}</div>
-        <div class="sub-meta">Каждые ${s.interval_h} ч · ${s.active ? 'активна' : 'на паузе'}</div>
+        <div class="sub-name">${esc(s.name)}</div>
+        <div class="sub-meta">Каждые ${s.interval_h} ч · ${active ? 'активна' : 'на паузе'}${s.last_run ? ' · ' + esc(s.last_run.slice(0,10)) : ''}</div>
       </div>
-      <div class="sub-indicator ${s.active ? 'sub-active' : 'sub-inactive'}"></div>
-    </div>
-  `).join('');
+      <div class="sub-dot ${active ? 'on' : 'off'}"></div>
+      <button class="btn btn-danger" style="flex:none;padding:7px 12px" onclick="deleteSub(${s.id}, '${esc(s.name)}')">🗑</button>
+    </div>`;
+  }).join('');
 }
 
-// ── Рендер блока активного пресета ────────────────────────────
-function renderPresetInfo(data) {
-  const name   = data.active_preset || '';
-  const filter = data.active_filter || null;
-  const presets = data.presets || [];
+function deleteSub(watchId, name) {
+  tg.showAlert(`Удалить подписку «${name}»?`);
+  setTimeout(() => {
+    try {
+      tg.sendData(JSON.stringify({ action: 'watch_delete', watch_id: watchId }));
+    } catch(e) {
+      tg.showAlert('Доступно только внутри Telegram.');
+    }
+  }, 100);
+}
 
-  if (name && filter) {
-    const law  = filter.law  || '44';
-    const okpd = filter.okpd2_section || '—';
-    const kw   = (filter.keywords || []).join(', ') || 'не заданы';
-    const pf   = filter.price_from ? `от ${Number(filter.price_from).toLocaleString('ru')} ₽` : '';
-    const pt   = filter.price_to   ? `до ${Number(filter.price_to).toLocaleString('ru')} ₽`   : '';
-    const priceStr = [pf, pt].filter(Boolean).join(' ') || 'любая';
-
-    document.getElementById('preset-info').style.display = 'flex';
-    document.getElementById('preset-info-name').textContent = name;
-    document.getElementById('preset-info-detail').textContent =
-      `${law}-ФЗ · ОКПД2: ${okpd} · Сумма: ${priceStr} · Слова: ${kw}`;
-
-    activeBotFilter  = filter;
-    activeBotPreset  = name;
-    botPresets       = presets;
-  }
-
-  if (presets.length > 1) {
-    const section = document.getElementById('presets-section');
-    section.style.display = '';
-    document.getElementById('preset-chips').innerHTML = presets.map(p =>
-      `<button class="preset-chip ${p === name ? 'active' : ''}" data-preset="${escHtml(p)}">${escHtml(p)}</button>`
-    ).join('');
-    document.querySelectorAll('.preset-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        document.querySelectorAll('.preset-chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-      });
+// ── Пресеты ───────────────────────────────────────────────────────
+function renderPresets(containerId, blockId, presets, activePreset, applyFn) {
+  const names = Object.keys(presets);
+  const block = document.getElementById(blockId);
+  if (names.length <= 1) { block.style.display = 'none'; return; }
+  block.style.display = '';
+  document.getElementById(containerId).innerHTML = names.map(name =>
+    `<button class="preset-chip ${name === activePreset ? 'active' : ''}" data-name="${esc(name)}">${esc(name)}</button>`
+  ).join('');
+  document.querySelectorAll(`#${containerId} .preset-chip`).forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll(`#${containerId} .preset-chip`).forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      applyFn(presets[chip.dataset.name], chip.dataset.name);
     });
-  }
+  });
 }
 
-// ── Загрузка данных (вызывается при старте и при нажатии ↻) ───
+function applyZPreset(flt, name) {
+  zActivePreset = name;
+  if (flt.law)          { ZF.law      = flt.law;           setSeg('z-law', ZF.law); }
+  if (flt.okpd2_section){ ZF.okpd     = flt.okpd2_section; setSeg('z-okpd', ZF.okpd); }
+  if (flt.date_from)    { ZF.date     = flt.date_from;     setSeg('z-date', ZF.date); }
+  if (flt.date_type)    { ZF.dateType = flt.date_type;     setSeg('z-datetype', ZF.dateType); }
+  if (flt.methods)      { ZF.methods  = flt.methods;       setMultiChips('z-methods', ZF.methods); }
+  if (flt.customer_inn !== undefined) { ZF.customer = flt.customer_inn; document.getElementById('z-customer').value = ZF.customer; }
+  if (flt.keywords)     { ZF.keywords = flt.keywords.join(', '); document.getElementById('z-keywords').value = ZF.keywords; }
+  document.getElementById('z-price-from').value = flt.price_from != null ? flt.price_from : '';
+  document.getElementById('z-price-to').value   = flt.price_to   != null ? flt.price_to   : '';
+  ZF.priceFrom = flt.price_from != null ? String(flt.price_from) : '';
+  ZF.priceTo   = flt.price_to   != null ? String(flt.price_to)   : '';
+  lsSave();
+}
+
+function applyNPreset(flt, name) {
+  nActivePreset = name;
+  if (flt.statuses)          { NF.statuses = flt.statuses;             setMultiChips('n-statuses', NF.statuses); }
+  if (flt.publish_date_from) { NF.pubDate  = flt.publish_date_from;    setSeg('n-pub-date', NF.pubDate); }
+  if (flt.update_date_from)  { NF.updDate  = flt.update_date_from;     setSeg('n-upd-date', NF.updDate); }
+  if (flt.customer_inn !== undefined) { NF.customer = flt.customer_inn; document.getElementById('n-customer').value = NF.customer; }
+  if (flt.keywords)          { NF.keywords = flt.keywords.join(', ');  document.getElementById('n-keywords').value = NF.keywords; }
+  lsSave();
+}
+
+// ── Загрузка данных ───────────────────────────────────────────────
 async function loadData() {
-  try {
-    const url = currentUserId
-      ? `./data_${currentUserId}.json?t=${Date.now()}`
-      : `./data.json?t=${Date.now()}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      allContracts = data.contracts || [];
-      const sub = `${allContracts.length} закупок · ${data.date || ''}`;
-      document.getElementById('header-sub').textContent = sub;
-      renderPresetInfo(data);
-      if (activeSection === 'procurement') renderContracts(allContracts);
-    } else {
-      showEmpty();
-    }
-  } catch(e) {
-    showEmpty();
-  }
+  const uid = currentUserId;
+  const suffix = uid ? `_${uid}` : '';
 
-  // Загружаем запросы цены
+  // Закупки
   try {
-    const url = currentUserId
-      ? `./priceplan_${currentUserId}.json?t=${Date.now()}`
-      : `./priceplan.json?t=${Date.now()}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      allPriceplans = data.contracts || [];
-      if (activeSection === 'priceplan') renderContracts(allPriceplans);
-    }
-  } catch(e) {}
+    const r = await fetch(`./data${suffix}.json?t=${Date.now()}`);
+    if (r.ok) {
+      const d = await r.json();
+      allZakupki    = d.contracts || [];
+      zPresets      = d.preset_details || {};
+      zActivePreset = d.active_preset  || '';
+      document.getElementById('header-sub').textContent =
+        `${allZakupki.length} закупок · ${d.date || ''}`;
+      renderPresets('z-presets-chips', 'z-presets-block', zPresets, zActivePreset, applyZPreset);
+    } else { allZakupki = []; }
+  } catch(e) { allZakupki = []; }
 
+  // НМЦК
   try {
-    const url = currentUserId
-      ? `./subs_${currentUserId}.json?t=${Date.now()}`
-      : `./subs.json?t=${Date.now()}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const subs = await res.json();
-      renderSubs(subs);
-    } else {
-      renderSubs([]);
-    }
-  } catch(e) {
-    renderSubs([]);
-  }
+    const r = await fetch(`./priceplan${suffix}.json?t=${Date.now()}`);
+    if (r.ok) {
+      const d = await r.json();
+      allNmck      = d.contracts || [];
+      nPresets     = d.preset_details || {};
+      nActivePreset = d.active_preset || '';
+      renderPresets('n-presets-chips', 'n-presets-block', nPresets, nActivePreset, applyNPreset);
+    } else { allNmck = []; }
+  } catch(e) { allNmck = []; }
+
+  // Подписки
+  try {
+    const r = await fetch(`./subs${suffix}.json?t=${Date.now()}`);
+    allSubs = r.ok ? (await r.json()) : [];
+  } catch(e) { allSubs = []; }
+
+  renderResults();
+  renderSubs();
 }
 
-// ── Инициализация ──────────────────────────────────────────────
+// ── Инициализация ─────────────────────────────────────────────────
 async function init() {
   currentUserId = tg.initDataUnsafe?.user?.id || '';
 
   try {
     const r = await fetch('./config.json?t=' + Date.now());
-    if (r.ok) {
-      const cfg = await r.json();
-      botUsername = cfg.bot_username || '';
-    }
+    if (r.ok) { const c = await r.json(); botUsername = c.bot_username || ''; }
   } catch(e) {}
 
-  loadFiltersFromLS();
+  lsLoad();
+  applyZfToDom();
+  applyNfToDom();
+  switchSection(activeSection);
+
   await loadData();
 }
 
-function showEmpty() {
-  document.getElementById('header-sub').textContent = 'Нет данных';
-  document.getElementById('results-list').innerHTML = `<div class="empty">
-    <div class="empty-icon">🔍</div>
-    <div class="empty-title">Результатов нет</div>
-    <div class="empty-text">Запустите поиск в боте — результаты появятся здесь</div>
-  </div>`;
-}
+tg.onEvent('themeChanged', () => {
+  document.documentElement.style.setProperty('--accent', tg.themeParams?.button_color || '#2481cc');
+});
 
 init().catch(err => {
   document.getElementById('header-sub').textContent = 'Ошибка загрузки';
   document.getElementById('results-list').innerHTML =
-    `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Ошибка</div><div class="empty-text">${err.message}</div></div>`;
-});
-
-tg.onEvent('themeChanged', () => {
-  document.documentElement.style.setProperty('--accent', tg.themeParams?.button_color || '#2481cc');
+    `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Ошибка</div><div class="empty-text">${esc(err.message)}</div></div>`;
 });
 </script>
 </body>

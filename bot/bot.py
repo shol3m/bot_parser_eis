@@ -7,12 +7,13 @@ Telegram-бот агентной системы госзакупок.
 /status   — статистика БД
 """
 
+from __future__ import annotations
 import logging
+from typing import Optional
 logging.basicConfig(
     filename="bot_debug.log",
     level=logging.WARNING,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    encoding="utf-8",
 )
 import ssl as _ssl
 
@@ -46,7 +47,7 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ContextTypes, filters as tg_filters,
 )
-WEBAPP_URL: str | None = None
+WEBAPP_URL: Optional[str] = None
 BOT_USERNAME: str = ""
 WEBAPP_DIR = Path(__file__).parent.parent / "webapp"
 
@@ -89,7 +90,7 @@ def _github_push_async(repo_path: str, content: bytes, message: str = "update") 
     threading.Thread(target=_github_push_file, args=(token, repo_path, content, message), daemon=True).start()
 
 
-def _webapp_button_url() -> str | None:
+def _webapp_button_url() -> Optional[str]:
     """URL для кнопки Mini App."""
     return WEBAPP_URL
 from telegram.constants import ParseMode
@@ -117,7 +118,7 @@ PROMPTS_PATH  = CONFIG_DIR / "prompts.json"
 # UTC+3 (Москва) для планировщика
 MSK = datetime.timezone(datetime.timedelta(hours=3))
 
-def _build_main_menu(webapp_url: str | None = None, preset_name: str = "") -> ReplyKeyboardMarkup:
+def _build_main_menu(webapp_url: Optional[str] = None, preset_name: str = "") -> ReplyKeyboardMarkup:
     app_btn = (
         KeyboardButton("🌐 Приложение", web_app=WebAppInfo(url=webapp_url))
         if webapp_url else "🌐 Приложение"
@@ -1984,10 +1985,17 @@ def _write_webapp_priceplan(results: list[dict], chat_id: int) -> None:
     """Пушит результаты запросов цены в webapp/priceplan_{chat_id}.json."""
     if not WEBAPP_DIR.exists():
         return
+    pp_data      = load_pp_presets()
+    pp_active    = pp_data.get("active", "default")
+    pp_filter    = pp_data["presets"].get(pp_active, DEFAULT_PRICEPLAN_FILTER)
     payload = {
-        "chat_id":  chat_id,
-        "date":     datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
-        "section":  "priceplan",
+        "chat_id":        chat_id,
+        "date":           datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "section":        "priceplan",
+        "active_preset":  pp_active,
+        "active_filter":  pp_filter,
+        "presets":        list(pp_data["presets"].keys()),
+        "preset_details": pp_data["presets"],
         "contracts": [
             {
                 "id":             c.get("_db_id") or c.get("id"),
@@ -2867,6 +2875,45 @@ async def callback_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ── Mini App: обработка данных из webapp ──────────────────────────────────────
 
+def _webapp_resolve_date(val: str):
+    today = datetime.date.today()
+    if val == "yesterday":
+        d = (today - datetime.timedelta(days=1)).strftime("%d.%m.%Y")
+        return d, d
+    if val == "week":
+        return (today - datetime.timedelta(days=7)).strftime("%d.%m.%Y"), today.strftime("%d.%m.%Y")
+    s = today.strftime("%d.%m.%Y")
+    return s, s
+
+
+def _webapp_build_zakupki_filter(data: dict) -> dict:
+    date_from, date_to = _webapp_resolve_date(data.get("date", "today"))
+    return {
+        "law":           data.get("law", "44"),
+        "okpd2_section": data.get("okpd2_section") or "J",
+        "methods":       data.get("methods") or [],
+        "keywords":      [k.strip() for k in (data.get("keywords") or "").split(",") if k.strip()],
+        "customer_inn":  data.get("customer_inn", ""),
+        "price_from":    float(data["price_from"]) if data.get("price_from") else None,
+        "price_to":      float(data["price_to"])   if data.get("price_to")   else None,
+        "date_from":     date_from,
+        "date_to":       date_to,
+        "date_type":     data.get("date_type", "published"),
+    }
+
+
+def _webapp_build_priceplan_filter(data: dict) -> dict:
+    return {
+        "keywords":          [k.strip() for k in (data.get("keywords") or "").split(",") if k.strip()],
+        "customer_inn":      data.get("customer_inn", ""),
+        "statuses":          data.get("statuses") or ["published", "proposed"],
+        "publish_date_from": data.get("publish_date_from", "today"),
+        "publish_date_to":   data.get("publish_date_to", "today"),
+        "update_date_from":  data.get("update_date_from") or None,
+        "update_date_to":    data.get("update_date_to") or None,
+    }
+
+
 async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_allowed(update):
         return
@@ -2875,13 +2922,13 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except (json.JSONDecodeError, AttributeError):
         return
 
-    action = data.get("action")
+    action  = data.get("action")
+    chat_id = update.effective_chat.id
 
     if action == "analyze":
         contract_id = data.get("contract_id")
         if not contract_id or not isinstance(contract_id, int) or contract_id <= 0:
             return
-        # Имитируем нажатие кнопки "Анализ" — переиспользуем логику через update.message
         contract = get_contract(contract_id)
         if not contract:
             await update.message.reply_text("Закупка не найдена в базе.")
@@ -2890,44 +2937,48 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🤖 Запускаю анализ: *{(contract.get('subject') or '')[:80]}*",
             parse_mode=ParseMode.MARKDOWN,
         )
-        # Запускаем полноценный анализ
         context.user_data["webapp_contract_id"] = contract_id
         await _run_detail_analysis(update, context, contract)
 
-    elif action in ("search", "priceplan_search"):
-        is_priceplan = (action == "priceplan_search")
-        date_val = data.get("date", "today")
-        # "week" → от 7 дней назад до сегодня
-        if date_val == "week":
-            from datetime import datetime, timedelta
-            date_from = (datetime.now() - timedelta(days=7)).strftime("%d.%m.%Y")
-            date_to   = datetime.now().strftime("%d.%m.%Y")
-        else:
-            date_from = date_to = date_val
+    elif action == "search":
+        filters = _webapp_build_zakupki_filter(data)
+        context.user_data["pending_filter"] = filters
+        await update.message.reply_text(
+            f"🔍 Запускаю поиск закупок…\n{_filter_summary(filters)}",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await cmd_fetch(update, context)
 
-        filters = {
-            "law":           data.get("law", "44"),
-            "okpd2_section": data.get("okpd2_section") or "J",
-            "keywords":      [k.strip() for k in (data.get("keywords") or "").split(",") if k.strip()],
-            "price_from":    float(data["price_from"]) if data.get("price_from") and not is_priceplan else None,
-            "price_to":      float(data["price_to"])   if data.get("price_to")   and not is_priceplan else None,
-            "date_from":     date_from,
-            "date_to":       date_to,
-        }
-        if is_priceplan:
-            _save_priceplan_filter(filters)
-            await update.message.reply_text(
-                f"💰 Запускаю поиск запросов цены…\n{_priceplan_summary(filters)}",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-            await cmd_priceplan(update, context)
+    elif action == "priceplan_search":
+        filters = _webapp_build_priceplan_filter(data)
+        _save_priceplan_filter(filters)
+        await update.message.reply_text(
+            f"💰 Запускаю поиск запросов цены…\n{_priceplan_summary(filters)}",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await cmd_priceplan(update, context)
+
+    elif action == "watch_delete":
+        watch_id = data.get("watch_id")
+        if not watch_id:
+            return
+        watch = get_watch(int(watch_id))
+        if not watch or watch["chat_id"] != chat_id:
+            await update.message.reply_text("Подписка не найдена.")
+            return
+        name = watch.get("name", "")
+        delete_watch(int(watch_id))
+        _cancel_watch(context.application, int(watch_id))
+        _write_webapp_subs(chat_id)
+        await update.message.reply_text(f"🗑 Подписка «{name}» удалена.")
+
+    elif action == "open_watch":
+        section = data.get("section", "zakupki")
+        context.user_data["section"] = section
+        if section == "nmck":
+            await cmd_watch_pp(update, context)
         else:
-            context.user_data["pending_filter"] = filters
-            await update.message.reply_text(
-                f"🔍 Запускаю поиск закупок из приложения…\n{_filter_summary(filters)}",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-            await cmd_fetch(update, context)
+            await cmd_watch(update, context)
 
 
 async def _run_detail_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, contract: dict) -> None:
@@ -2995,14 +3046,14 @@ def _write_webapp_contracts(contracts: list[dict], chat_id: int) -> None:
     presets_data    = load_presets()
     active_name     = presets_data.get("active", "default")
     active_filter   = presets_data["presets"].get(active_name, DEFAULT_FILTER)
-    preset_names    = list(presets_data["presets"].keys())
     payload = {
         "chat_id":           chat_id,
         "bot_username":      BOT_USERNAME,
         "date":              datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
         "active_preset":     active_name,
         "active_filter":     active_filter,
-        "presets":           preset_names,
+        "presets":           list(presets_data["presets"].keys()),
+        "preset_details":    presets_data["presets"],
         "contracts": [
             {
                 "id":            c.get("_db_id") or c.get("id"),
@@ -3041,6 +3092,7 @@ def _write_webapp_subs(chat_id: int) -> None:
                 "interval_h": w["interval_h"],
                 "active":     bool(w["active"]),
                 "last_run":   w.get("last_run") or "",
+                "_type":      json.loads(w.get("filters_json") or "{}").get("_type", "zakupki"),
             }
             for w in watches
         ]
