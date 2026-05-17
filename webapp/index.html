@@ -931,19 +931,24 @@ function renderSubs() {
         <div class="sub-meta">Каждые ${s.interval_h} ч · ${active ? 'активна' : 'на паузе'}${s.last_run ? ' · ' + esc(s.last_run.slice(0,10)) : ''}</div>
       </div>
       <div class="sub-dot ${active ? 'on' : 'off'}"></div>
-      <button class="btn btn-danger" style="flex:none;padding:7px 12px" onclick="deleteSub(${s.id}, '${esc(s.name)}')">🗑</button>
+      <button class="btn btn-danger" style="flex:none;padding:7px 12px"
+        data-watch-id="${Number(s.id)}" data-watch-name="${esc(s.name)}">🗑</button>
     </div>`;
   }).join('');
-}
 
-function deleteSub(watchId, name) {
-  tg.showConfirm(`Удалить подписку «${name}»?`, (ok) => {
-    if (!ok) return;
-    try {
-      tg.sendData(JSON.stringify({ action: 'watch_delete', watch_id: watchId }));
-    } catch(e) {
-      tg.showAlert('Доступно только внутри Telegram.');
-    }
+  el.querySelectorAll('[data-watch-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const watchId = Number(btn.dataset.watchId);
+      const name    = btn.dataset.watchName;
+      tg.showConfirm(`Удалить подписку «${name}»?`, (ok) => {
+        if (!ok) return;
+        try {
+          tg.sendData(JSON.stringify({ action: 'watch_delete', watch_id: watchId }));
+        } catch(e) {
+          tg.showAlert('Доступно только внутри Telegram.');
+        }
+      });
+    });
   });
 }
 
