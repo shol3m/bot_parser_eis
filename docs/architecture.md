@@ -51,6 +51,35 @@ Telegram → bot.py → parsers/zakupki.py → zakupki.gov.ru
 
 Флоу: получить список документов с ЕИС → показать с чекбоксами → скачать выбранные → Claude → результат.
 
+### Mini App (webapp/index.html)
+
+Хостится на GitHub Pages. Бот пушит JSON-файлы через GitHub API после каждого поиска.
+
+**JSON-файлы на GitHub Pages:**
+
+| Файл | Когда обновляется | Содержимое |
+|------|-------------------|-----------|
+| `data_{chat_id}.json` | После поиска закупок | `contracts[]`, `active_preset`, `active_filter`, `presets[]`, `preset_details{}` |
+| `priceplan_{chat_id}.json` | После поиска НМЦК | `contracts[]`, `active_preset`, `active_filter`, `presets[]`, `preset_details{}` |
+| `subs_{chat_id}.json` | После поиска / удаления подписки | `[{id, name, interval_h, active, last_run, _type}]` |
+| `config.json` | При старте бота | `{bot_username, webapp_url}` |
+
+`_type` в `subs` — `"zakupki"` или `"nmck"` (определяется из `filters_json` в БД).
+
+**sendData-действия (Mini App → бот):**
+
+| action | Поля | Что делает бот |
+|--------|------|---------------|
+| `search` | `law`, `methods`, `okpd2_section`, `date_type`, `date`, `customer_inn`, `keywords`, `price_from`, `price_to` | Запускает `cmd_fetch` |
+| `priceplan_search` | `statuses`, `publish_date_from/to`, `update_date_from/to`, `customer_inn`, `keywords` | Запускает `cmd_priceplan` |
+| `analyze` | `contract_id: int` | Запускает `_run_detail_analysis` |
+| `watch_delete` | `watch_id: int` | Удаляет подписку, пушит обновлённый `subs_{chat_id}.json` |
+| `open_watch` | `section: "zakupki"\|"nmck"` | Открывает меню подписок в чате |
+
+Вспомогательные функции в `bot.py`: `_webapp_build_zakupki_filter()`, `_webapp_build_priceplan_filter()`, `_webapp_resolve_date()`.
+
+---
+
 ### Мониторинг (`/watch`)
 
 Вотчи хранятся в SQLite (`watches`). При запуске бота все активные вотчи восстанавливаются через `JobQueue.run_repeating()`. Проверка — сравнение номеров закупок с уже известными в БД.
