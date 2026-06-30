@@ -76,7 +76,7 @@ orchestrator.py  (координатор)
     │         вход:  filters dict (НМЦК)
     │         выход: list[dict] запросов цены
     │
-    └──► agents/analyze_agent.py  → claude --print
+    └──► agents/analyze_agent.py  → Groq API (llama-3.3-70b-versatile)
               вход:  list[Path] документов + prompt str
               выход: str анализа
 ```
@@ -285,12 +285,63 @@ Telegram Mini App: **https://shol3m.github.io/bot_parser_eis**
 
 | Что | Когда | Как |
 |-----|-------|-----|
-| Бот | При логине в Windows | `Startup\AgentBot.bat` → `python bot\bot.py` |
+| Бот (Windows) | При логине в Windows | `Startup\AgentBot.bat` → `python bot\bot.py` |
+| Бот (VPS) | При старте сервера / падении | `systemd` сервис `bot-parser-eis` |
 | Дайджест закупок | По расписанию из бота | `JobQueue` `daily_fetch` внутри bot.py (МСК) |
 | Дайджест НМЦК | По расписанию из бота | `JobQueue` `daily_pp` внутри bot.py (МСК) |
 
 **Требование:** `python-telegram-bot[job-queue]` для расписания и подписок.
 Установка: `pip install "python-telegram-bot[job-queue]"`
+
+---
+
+## Деплой на VPS (Aeza)
+
+Бот задеплоен на сервер `45.141.177.38` (Ubuntu) в тестовом режиме.
+Живёт рядом с другим ботом (`agent-tg`) по той же схеме: `/opt/<project>/` + systemd.
+
+**Расположение на сервере:**
+```
+/opt/bot_parser_eis/
+├── venv/                        # виртуальное окружение Python
+├── .env                         # TELEGRAM_BOT_TOKEN, GROQ_API_KEY, GITHUB_TOKEN, CHAT_ID
+├── config/
+│   └── bot_config.json          # токен, chat_id, allowed_users, schedule (НЕ в git)
+└── data/
+    ├── state.db                 # SQLite база (создаётся через init_db())
+    └── documents/               # скачанные документы закупок
+```
+
+**Управление сервисом:**
+```bash
+ssh root@45.141.177.38
+
+systemctl status bot-parser-eis     # статус
+journalctl -u bot-parser-eis -f     # логи в реальном времени
+systemctl restart bot-parser-eis    # перезапуск
+```
+
+**Обновление кода:**
+```bash
+# На сервере:
+cd /opt/bot_parser_eis
+git pull origin main
+venv/bin/pip install -q -r requirements.txt
+systemctl restart bot-parser-eis
+```
+
+**Удаление (это тест):**
+```bash
+systemctl stop bot-parser-eis
+systemctl disable bot-parser-eis
+rm -rf /opt/bot_parser_eis
+rm /etc/systemd/system/bot-parser-eis.service
+systemctl daemon-reload
+```
+
+**⚠️ Известное ограничение:** `zakupki.gov.ru` **недоступен с этого сервера** — сайт
+блокирует зарубежные IP. Парсинг закупок не работает. Для продакшна нужен либо российский
+VPS, либо SOCKS5-прокси (прописать в `bot_config.json` поле `proxy`).
 
 ---
 
