@@ -1,5 +1,6 @@
 # Секреты и конфиги с токенами
 config/bot_config.json
+.env
 
 # Локальные настройки Claude Code
 .claude/settings.local.json

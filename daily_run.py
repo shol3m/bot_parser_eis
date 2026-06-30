@@ -8,15 +8,18 @@ import re
 import sys
 import time
 import asyncio
-import subprocess
-import shutil
-import platform
-import tempfile
 import os
 from pathlib import Path
 
 # Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Загружаем .env если есть
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env")
+except ImportError:
+    pass
 
 from parsers.zakupki import run as run_parser, fetch_contract_documents, download_document
 from agents.analyze_agent import extract_text, sort_by_priority
@@ -31,25 +34,23 @@ def load_config(name: str) -> dict:
 # ── Быстрый анализ ────────────────────────────────────────────────────────────
 
 def run_claude(prompt: str) -> str:
-    claude_path = shutil.which("claude.cmd") or shutil.which("claude")
-    if not claude_path:
-        return "ОЦЕНКА: 0/10\nКОММЕНТАРИЙ: claude CLI не найден."
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8", delete=False) as tmp:
-        tmp.write(prompt)
-        tmp_path = tmp.name
+    """Отправляет промпт в Groq API и возвращает текст ответа."""
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        return "ОЦЕНКА: 0/10\nКОММЕНТАРИЙ: GROQ_API_KEY не задан в переменных окружения."
 
     try:
-        is_win = platform.system() == "Windows"
-        cmd = ["cmd", "/c", claude_path, "--print", f"@{tmp_path}"] if is_win else [claude_path, "--print", f"@{tmp_path}"]
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=90)
-        return r.stdout.strip() or r.stderr.strip() or "Нет ответа."
-    except subprocess.TimeoutExpired:
-        return "ОЦЕНКА: 0/10\nКОММЕНТАРИЙ: Таймаут анализа."
+        from groq import Groq
+        client = Groq(api_key=api_key)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            timeout=90,
+        )
+        return response.choices[0].message.content or "Нет ответа."
     except Exception as e:
-        return f"ОЦЕНКА: 0/10\nКОММЕНТАРИЙ: Ошибка: {e}"
-    finally:
-        os.unlink(tmp_path)
+        return f"ОЦЕНКА: 0/10\nКОММЕНТАРИЙ: Ошибка Groq API: {e}"
 
 
 def parse_quick_result(text: str) -> tuple[int, str]:

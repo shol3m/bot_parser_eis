@@ -4,9 +4,9 @@
 Вызов: python agents/analyze_tz.py [папка_с_документами]
 """
 
-import subprocess
 import sys
 import json
+import os
 from pathlib import Path
 
 try:
@@ -84,7 +84,7 @@ def sort_by_priority(files: list[Path]) -> list[Path]:
 
 
 def analyze_contract_dir(contract_dir: Path) -> str:
-    """Анализирует один каталог с документами закупки через claude CLI."""
+    """Анализирует один каталог с документами закупки через Groq API."""
     files = sort_by_priority(list(contract_dir.glob("*.*")))
     if not files:
         return "Нет документов для анализа."
@@ -106,32 +106,22 @@ def analyze_contract_dir(contract_dir: Path) -> str:
     full_text = "\n\n".join(parts)
     prompt = ANALYSIS_PROMPT.format(documents_text=full_text)
 
-    # Запускаем claude CLI через временный файл с промптом (безопасно для спецсимволов)
-    import shutil, platform, tempfile, os
-    claude_path = shutil.which("claude.cmd") or shutil.which("claude")
-    if not claude_path:
-        return "[claude CLI не найден в PATH. Убедись что Claude Code установлен.]"
-
-    # Пишем промпт во временный файл чтобы не экранировать спецсимволы в shell
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8", delete=False) as tmp:
-        tmp.write(prompt)
-        tmp_path = tmp.name
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        return "[GROQ_API_KEY не задан в переменных окружения]"
 
     try:
-        if platform.system() == "Windows":
-            cmd = ["cmd", "/c", claude_path, "--print", f"@{tmp_path}"]
-        else:
-            cmd = [claude_path, "--print", f"@{tmp_path}"]
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=120)
-        return result.stdout.strip() or result.stderr.strip() or "Нет ответа от claude."
-    except FileNotFoundError:
-        return "[claude CLI не найден в PATH. Убедись что Claude Code установлен.]"
-    except subprocess.TimeoutExpired:
-        return "[Таймаут анализа (120 сек)]"
+        from groq import Groq
+        client = Groq(api_key=api_key)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            timeout=120,
+        )
+        return response.choices[0].message.content or "Нет ответа от Groq."
     except Exception as e:
-        return f"[Ошибка запуска claude: {e}]"
-    finally:
-        os.unlink(tmp_path)
+        return f"[Ошибка Groq API: {e}]"
 
 
 def run(docs_root: str = "data/documents") -> None:

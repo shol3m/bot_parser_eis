@@ -298,8 +298,28 @@ Telegram Mini App: **https://shol3m.github.io/bot_parser_eis**
 
 ```
 python-telegram-bot[job-queue]  requests  beautifulsoup4  lxml
-pdfplumber  python-docx  openpyxl  httpx[socks]
+pdfplumber  python-docx  openpyxl  httpx[socks]  groq  python-dotenv
 ```
+
+Все зависимости перечислены в `requirements.txt` в корне проекта.
+
+## AI-анализ документов
+
+Вместо Claude CLI (`claude --print`) используется **Groq API** (модель `llama-3.3-70b-versatile`).
+- Ключ задаётся через переменную окружения `GROQ_API_KEY` (или `.env` файл).
+- Функции-обёртки: `_run_claude` в `agents/analyze_agent.py`, `run_claude` в `daily_run.py` — сигнатуры не изменились.
+- `agents/analyze_tz.py` — мёртвый код (не импортируется нигде), также мигрирован на Groq.
+
+## Конфигурация на VPS
+
+Создать `.env` в корне проекта (по образцу `.env.example`):
+```
+TELEGRAM_BOT_TOKEN=...
+GROQ_API_KEY=...
+GITHUB_TOKEN=...
+CHAT_ID=...
+```
+Файл `.env` — в `.gitignore`. Загружается автоматически через `python-dotenv` при старте `bot/bot.py` и `daily_run.py`.
 
 ---
 
@@ -309,6 +329,7 @@ pdfplumber  python-docx  openpyxl  httpx[socks]
 - **Заказчик в НМЦК** — ЕИС pricereq не имеет серверного фильтра по заказчику (только `customerPlace` для региона). Имя заказчика добавляется в `searchString` с `morphology=on`.
 - **Способ закупки `pc` (Запрос котировок)** — ЕИС игнорирует `pc=on` в прямых URL-запросах. Кнопка убрана из интерфейса. Другие методы (`af`, `ca`, `pa`) работают корректно.
 - **ОКПД2 кастомные коды** — ЕИС не принимает текстовые коды без числового ID. При вводе кода вручную он добавляется в `searchString`. Раздел J (`okpd2Ids=8873870`) работает корректно.
+- **Groq API недоступен** если `GROQ_API_KEY` не задан в `.env` или переменных окружения — анализ документов вернёт ошибку, парсинг продолжит работать.
 - **JobQueue недоступен** если установлен `python-telegram-bot` без `[job-queue]` — расписание и подписки не работают.
 - **Mini App не обновляется без `github_token`** — если в `bot_config.json` не задан `github_token`, бот не пушит JSON на GitHub Pages после поиска. Mini App будет показывать устаревшие данные. Решение: добавить Personal Access Token с правом `contents: write`.
 - **Python 3.8 совместимость (Mac/Linux)** — бот разработан под Python 3.9+. На Python 3.8 нужны: `from __future__ import annotations` во всех модулях, убрать `encoding=` из `logging.basicConfig()`, использовать `Optional[X]` вместо `X | None`. Уже исправлено в кодовой базе.

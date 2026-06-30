@@ -15,10 +15,6 @@ Import:
 
 import sys
 import argparse
-import subprocess
-import shutil
-import platform
-import tempfile
 import os
 from pathlib import Path
 
@@ -174,27 +170,23 @@ def run(
 
 
 def _run_claude(prompt: str, timeout: int = 120) -> str:
-    claude_path = shutil.which("claude.cmd") or shutil.which("claude")
-    if not claude_path:
-        return "[claude CLI не найден в PATH]"
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8", delete=False) as tmp:
-        tmp.write(prompt)
-        tmp_path = tmp.name
+    """Отправляет промпт в Groq API и возвращает текст ответа."""
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        return "[GROQ_API_KEY не задан в переменных окружения]"
 
     try:
-        if platform.system() == "Windows":
-            cmd = ["cmd", "/c", claude_path, "--print", f"@{tmp_path}"]
-        else:
-            cmd = [claude_path, "--print", f"@{tmp_path}"]
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
-        return result.stdout.strip() or result.stderr.strip() or "[Нет ответа от Claude]"
-    except subprocess.TimeoutExpired:
-        return f"[Таймаут анализа ({timeout} сек)]"
+        from groq import Groq
+        client = Groq(api_key=api_key)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            timeout=timeout,
+        )
+        return response.choices[0].message.content or "[Нет ответа от Groq]"
     except Exception as e:
-        return f"[Ошибка запуска Claude: {e}]"
-    finally:
-        os.unlink(tmp_path)
+        return f"[Ошибка Groq API: {e}]"
 
 
 def main():
