@@ -24,7 +24,7 @@ jobs:
             set -e
             cd /opt/bot_parser_eis
             git pull origin main
-            pip install -q -r requirements.txt
+            /opt/bot_parser_eis/venv/bin/pip install -q -r requirements.txt
             systemctl restart bot-parser-eis
             sleep 2
             systemctl is-active bot-parser-eis
