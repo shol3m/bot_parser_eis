@@ -295,10 +295,9 @@ Telegram Mini App: **https://shol3m.github.io/bot_parser_eis**
 
 ---
 
-## Деплой на VPS (Aeza)
+## Деплой на VPS (Ubuntu)
 
-Бот задеплоен на VPS Aeza (Ubuntu) в тестовом режиме.
-Живёт рядом с другим ботом (`agent-tg`) по той же схеме: `/opt/<project>/` + systemd.
+Схема: `/opt/bot_parser_eis/` + systemd + GitHub Actions автодеплой при пуше в `main`.
 
 **Расположение на сервере:**
 ```
@@ -312,25 +311,127 @@ Telegram Mini App: **https://shol3m.github.io/bot_parser_eis**
     └── documents/               # скачанные документы закупок
 ```
 
-**Управление сервисом:**
+---
+
+### Первичная установка на чистый Ubuntu VPS
+
+```bash
+ssh root@<VPS_IP>
+
+# 1. Системные зависимости
+apt update && apt install -y python3-pip python3-venv python3-dev \
+    libxml2-dev libxslt1-dev zlib1g-dev git
+
+# 2. Клонировать репо
+cd /opt
+git clone https://github.com/shol3m/bot_parser_eis.git
+cd bot_parser_eis
+
+# 3. Виртуальное окружение и зависимости
+python3 -m venv venv
+venv/bin/pip install --upgrade pip
+venv/bin/pip install -r requirements.txt
+
+# 4. Создать .env
+cat > .env << 'EOF'
+TELEGRAM_BOT_TOKEN=вставить_токен
+GROQ_API_KEY=вставить_ключ
+GITHUB_TOKEN=вставить_pat_токен
+CHAT_ID=вставить_chat_id
+EOF
+
+# 5. Создать config/bot_config.json
+cat > config/bot_config.json << 'EOF'
+{
+  "token": "вставить_токен",
+  "chat_id": 0,
+  "allowed_users": [],
+  "proxy": null,
+  "github_token": "вставить_pat_токен"
+}
+EOF
+# Заменить 0 на реальный chat_id, вставить токены
+
+# 6. Создать папки данных
+mkdir -p data/documents data/contracts
+
+# 7. Создать systemd-сервис
+cat > /etc/systemd/system/bot-parser-eis.service << 'EOF'
+[Unit]
+Description=Bot Parser EIS
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bot_parser_eis
+EnvironmentFile=/opt/bot_parser_eis/.env
+ExecStart=/opt/bot_parser_eis/venv/bin/python bot/bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable bot-parser-eis
+systemctl start bot-parser-eis
+
+# 8. Проверить что запустился
+systemctl status bot-parser-eis
+journalctl -u bot-parser-eis -n 30
+```
+
+---
+
+### Настройка автодеплоя (GitHub Actions)
+
+В репозитории уже есть `.github/workflows/deploy.yml`. Нужно добавить два секрета в GitHub → Settings → Secrets → Actions:
+
+| Secret | Значение |
+|--------|---------|
+| `VPS_HOST` | IP-адрес сервера |
+| `SSH_PRIVATE_KEY` | Приватный SSH-ключ для root |
+
+После этого каждый `git push origin main` автоматически деплоит код на VPS.
+
+Генерация ключа (если нет):
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/vps_bot -N ""
+ssh-copy-id -i ~/.ssh/vps_bot.pub root@<VPS_IP>
+cat ~/.ssh/vps_bot  # скопировать в SSH_PRIVATE_KEY на GitHub
+```
+
+---
+
+### Управление сервисом
+
 ```bash
 ssh root@<VPS_IP>
 
 systemctl status bot-parser-eis     # статус
 journalctl -u bot-parser-eis -f     # логи в реальном времени
 systemctl restart bot-parser-eis    # перезапуск
+systemctl stop bot-parser-eis       # остановить
+systemctl start bot-parser-eis      # запустить
 ```
 
-**Обновление кода:**
+---
+
+### Обновление кода вручную
+
 ```bash
-# На сервере:
 cd /opt/bot_parser_eis
 git pull origin main
 venv/bin/pip install -q -r requirements.txt
 systemctl restart bot-parser-eis
 ```
 
-**Удаление (это тест):**
+---
+
+### Полное удаление
+
 ```bash
 systemctl stop bot-parser-eis
 systemctl disable bot-parser-eis
@@ -339,12 +440,18 @@ rm /etc/systemd/system/bot-parser-eis.service
 systemctl daemon-reload
 ```
 
-**⚠️ Известное ограничение:** `zakupki.gov.ru` **недоступен с этого сервера** — сайт
-блокирует зарубежные IP. Решения:
-- Российский VPS (лучший вариант)
-- SOCKS5-прокси: прописать URL в `bot_config.json` поле `proxy` **или** в `.env` как `ZAKUPKI_PROXY=socks5://user:pass@host:1080`
+---
 
-Приоритет: `ZAKUPKI_PROXY` из `.env` → `proxy` из `bot_config.json`. Формат: `socks5://...`, `http://...`.
+### ⚠️ Ограничения в зависимости от локации сервера
+
+| Локация VPS | zakupki.gov.ru | Groq API | Telegram |
+|-------------|---------------|----------|----------|
+| Зарубежный (EU/US) | ❌ заблокирован | ✅ работает | ✅ работает |
+| Российский | ✅ работает | ⚠️ может быть заблокирован | ✅ работает |
+
+**Зарубежный VPS + российский прокси только для парсинга** — оптимальная схема:
+прописать `ZAKUPKI_PROXY=socks5://user:pass@host:1080` в `.env`.
+Приоритет: `ZAKUPKI_PROXY` из `.env` → `proxy` из `bot_config.json`.
 
 ---
 
