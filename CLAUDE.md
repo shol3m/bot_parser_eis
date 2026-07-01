@@ -297,7 +297,7 @@ Telegram Mini App: **https://shol3m.github.io/bot_parser_eis**
 
 ## Деплой на VPS (Aeza)
 
-Бот задеплоен на сервер `45.141.177.38` (Ubuntu) в тестовом режиме.
+Бот задеплоен на VPS Aeza (Ubuntu) в тестовом режиме.
 Живёт рядом с другим ботом (`agent-tg`) по той же схеме: `/opt/<project>/` + systemd.
 
 **Расположение на сервере:**
@@ -314,7 +314,7 @@ Telegram Mini App: **https://shol3m.github.io/bot_parser_eis**
 
 **Управление сервисом:**
 ```bash
-ssh root@45.141.177.38
+ssh root@<VPS_IP>
 
 systemctl status bot-parser-eis     # статус
 journalctl -u bot-parser-eis -f     # логи в реальном времени
