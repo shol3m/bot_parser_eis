@@ -3,8 +3,9 @@
 ## Общая схема
 
 ```
-Telegram → bot.py → parsers/zakupki.py → zakupki.gov.ru
-                 → agents/analyze_tz.py → claude CLI → Anthropic
+Telegram → bot.py → orchestrator.py → agents/parser_agent.py → parsers/zakupki.py → zakupki.gov.ru
+                                    → agents/priceplan_agent.py → parsers/priceplan.py → zakupki.gov.ru
+                                    → agents/analyze_agent.py → Groq API (llama-3.3-70b)
                  → data/db.py → data/state.db
 ```
 
@@ -163,10 +164,10 @@ schpp:{HH:MM} / schpp:off — расписание НМЦК
 
 ## Сетевые особенности
 
-- **Прокси**: Hiddify, `socks5://127.0.0.1:12334` — нужен для Telegram
-- **Парсер ЕИС**: работает без прокси (`proxies=None`) — системный прокси ломает TLS с ЕИС
+- **Telegram API**: прокси настраивается через `proxy` в `bot_config.json` или `httpx` напрямую
+- **Парсер ЕИС** (zakupki.gov.ru): прокси задаётся через `ZAKUPKI_PROXY` в `.env` или `proxy` в `bot_config.json`; без прокси — только с российского IP
+- **Groq API**: доступен с зарубежных IP; с российских — возможна блокировка
 - **SSL патч** (`SECLEVEL=1`) в начале `bot.py` — нужен для Python 3.14 + OpenSSL 3.x
-- **HTTPXRequest** через SOCKS5 требует `httpx_kwargs={"verify": False}`
 - **`run_polling`** обязательно с `allowed_updates=Update.ALL_TYPES` — иначе Telegram не доставляет `callback_query`
 - Таймауты HTTPXRequest: `read=20, write=20, connect=15`
 

@@ -10,12 +10,17 @@
 
 ```json
 {
-  "token": "...",                        // токен Telegram-бота
-  "chat_id": 123456789,                  // chat_id владельца (устанавливается /start)
-  "proxy": "socks5://127.0.0.1:12334",  // SOCKS5-прокси (Hiddify)
-  "schedule_time": "10:00"              // время автосбора МСК (устанавливается /schedule)
+  "token": "...",             // токен Telegram-бота
+  "chat_id": 123456789,       // chat_id владельца (устанавливается /start)
+  "proxy": null,              // прокси для Telegram (null = без прокси)
+  "github_token": "...",      // PAT токен GitHub (scope: contents:write)
+  "schedule_time": "10:00",   // время автосбора закупок МСК (/schedule)
+  "schedule_pp_time": "10:00" // время автосбора НМЦК МСК (/schedule_pp)
 }
 ```
+
+> `proxy` в `bot_config.json` — прокси для Telegram API.
+> Прокси для парсинга zakupki.gov.ru задаётся отдельно: `ZAKUPKI_PROXY` в `.env`.
 
 ---
 

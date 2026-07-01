@@ -1,37 +1,38 @@
 # Решение проблем
 
----
-
-## Сетевые проблемы
+## Сеть и доступность
 
 | Симптом | Причина | Решение |
 |---------|---------|---------|
-| `ConnectTimeout` при старте | Hiddify не подключён к серверу | Подключить Hiddify, проверить порт 12334 |
-| Кнопки бота не работают (молчат) | Telegram не доставляет `callback_query` | `run_polling(allowed_updates=Update.ALL_TYPES)` — уже стоит |
-| TLS-ошибки через SOCKS5-прокси | SSL-верификация не работает через SOCKS5 | `HTTPXRequest(httpx_kwargs={"verify": False})` — уже стоит |
-| Парсер ЕИС не работает | Системный прокси Windows перехватывает запросы | `proxies={'http': None, 'https': None}` — уже стоит |
-| `httpx` подхватывает системный прокси | `trust_env=True` по умолчанию | `HTTPXRequest(httpx_kwargs={"trust_env": False})` — уже стоит |
-| HTTP-прокси не работает для Telegram | Telegram требует TLS, HTTP-прокси его ломает | Использовать только SOCKS5 |
-| Порт 12337 (Hiddify direct) даёт 403 | Telegram заблокирован без VPN | Использовать порт 12334 (mixed/VPN) |
+| zakupki.gov.ru недоступен | VPS/Mac роутит через зарубежный IP | Настроить `ZAKUPKI_PROXY` в `.env` |
+| Groq API недоступен | Российский IP, US export controls | Запускать бота на зарубежном VPS |
+| `409 Conflict` в логах | Два экземпляра бота одновременно | Остановить один: `systemctl stop` на VPS или `Ctrl+C` локально |
+| Кнопки бота не работают | Telegram не доставляет `callback_query` | `run_polling(allowed_updates=Update.ALL_TYPES)` — уже стоит |
+| TLS-ошибки через SOCKS5 | SSL-верификация не работает через SOCKS5 | `HTTPXRequest(httpx_kwargs={"verify": False})` — уже стоит |
+| SSL ошибки Python 3.14 | OpenSSL 3.x повысил SECLEVEL | Патч `ctx.set_ciphers("DEFAULT@SECLEVEL=1")` в `bot.py` — уже стоит |
 
 ---
 
-## Python / SSL
+## Известные баги
 
-| Симптом | Причина | Решение |
-|---------|---------|---------|
-| TLS-ошибки в Python 3.14 | OpenSSL 3.x повысил SECLEVEL до 2 | Патч `ctx.set_ciphers("DEFAULT@SECLEVEL=1")` в начале `bot.py` — уже стоит |
+| Баг | Файл | Статус |
+|-----|------|--------|
+| `.doc` файлы вызывают `NameError` | `agents/analyze_agent.py:73,76` — нет `import subprocess, shutil` | ❌ не исправлено |
+| `data/debug_priceplan.html` создаётся при каждом первом запросе НМЦК | `parsers/priceplan.py` | нормальное поведение для отладки |
+| Заказчик в НМЦК ищется через `searchString`, не отдельным параметром | ЕИС pricereq не поддерживает | ожидаемо |
+| Способ закупки `pc` (Запрос котировок) игнорируется ЕИС | Баг ЕИС | убран из интерфейса |
+| `okpd2_custom_code` добавляется в `searchString` | ЕИС требует числовой ID | ожидаемо |
 
 ---
 
-## Бот / процессы
+## Бот / запуск
 
 | Симптом | Причина | Решение |
 |---------|---------|---------|
-| `409 Conflict` в логе | Два экземпляра бота одновременно | `taskkill /F /IM python.exe /T`, затем перезапуск |
-| Кнопки карточек `/fetch` не работают после рестарта | `context.user_data` очищается при перезапуске | Выполнить новый `/fetch` |
-| `WindowsApps\python.exe` не запускает бота | Это шим (заглушка), порождает дочерний процесс | Использовать полный путь: `C:\Users\Даниил\AppData\Local\Python\bin\python.exe` |
-| `claude CLI` не найден | Claude Code не установлен или не в PATH | Проверить `shutil.which("claude.cmd")`, установить Claude Code |
+| Кнопки карточек `/fetch` не работают после рестарта | `context.user_data` очищается | Выполнить новый `/fetch` |
+| Mini App не обновляется | Нет `github_token` в `bot_config.json` | Добавить PAT с правом `contents:write` |
+| JobQueue/расписание не работает | Установлен `python-telegram-bot` без `[job-queue]` | `pip install "python-telegram-bot[job-queue]"` |
+| `GROQ_API_KEY не задан` | Нет ключа в `.env` | Добавить ключ из console.groq.com |
 
 ---
 
@@ -39,19 +40,6 @@
 
 | Симптом | Причина | Решение |
 |---------|---------|---------|
-| "Документы не найдены на ЕИС" | URL не содержит `common-info.html` или страница пустая | Парсер пробует fallback на `common-info.html` автоматически |
-| Список документов содержит мусорные ссылки | `listModal.html` и навигационные ссылки | Отфильтрованы через `SKIP_URLS` и `NAV_LABELS` |
-| Анализ зависает | ЕИС не отвечает или Claude долго думает | Таймаут 30 сек на получение списка; 120 сек на Claude |
-| `.doc` файлы не читаются | Старый формат Word не поддерживается `python-docx` напрямую | Попытка через `python-docx` как fallback; точный результат не гарантирован |
-
----
-
-## Логи
-
-```bash
-# Основной лог бота (все события, DEBUG уровень)
-bot_debug.log
-
-# Ошибки запуска (stderr при старте через Start-Process)
-bot_error.log
-```
+| "Документы не найдены на ЕИС" | URL не содержит `common-info.html` | Парсер пробует fallback автоматически |
+| Анализ зависает | ЕИС не отвечает или Groq долго думает | Таймаут 30 сек на список; 120 сек на Groq |
+| `.doc` не читаются | `NameError: shutil/subprocess` | Исправить импорты в `analyze_agent.py` |
