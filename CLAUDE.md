@@ -340,15 +340,18 @@ systemctl daemon-reload
 ```
 
 **⚠️ Известное ограничение:** `zakupki.gov.ru` **недоступен с этого сервера** — сайт
-блокирует зарубежные IP. Парсинг закупок не работает. Для продакшна нужен либо российский
-VPS, либо SOCKS5-прокси (прописать в `bot_config.json` поле `proxy`).
+блокирует зарубежные IP. Решения:
+- Российский VPS (лучший вариант)
+- SOCKS5-прокси: прописать URL в `bot_config.json` поле `proxy` **или** в `.env` как `ZAKUPKI_PROXY=socks5://user:pass@host:1080`
+
+Приоритет: `ZAKUPKI_PROXY` из `.env` → `proxy` из `bot_config.json`. Формат: `socks5://...`, `http://...`.
 
 ---
 
 ## Зависимости
 
 ```
-python-telegram-bot[job-queue]  requests  beautifulsoup4  lxml
+python-telegram-bot[job-queue]  requests[socks]  beautifulsoup4  lxml
 pdfplumber  python-docx  openpyxl  httpx[socks]  groq  python-dotenv
 ```
 

@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 BASE_URL   = "https://zakupki.gov.ru"
 SEARCH_URL = "https://zakupki.gov.ru/epz/pricereq/search/results.html"
-PROXY      = {"http": None, "https": None}
+PROXY      = {"http": None, "https": None}  # обновляется в run() при наличии прокси
 SESSION    = requests.Session()
 SESSION.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -185,7 +185,13 @@ def parse_priceplan_results(html: str) -> list[dict]:
 def run(config_path: str = "config/priceplan_filter.json",
         max_pages: int = 0,
         stop_event=None,
-        progress_cb=None) -> list[dict]:
+        progress_cb=None,
+        proxy: str | None = None) -> list[dict]:
+    global PROXY
+    PROXY = {"http": proxy, "https": proxy} if proxy else {"http": None, "https": None}
+    if proxy:
+        print(f"[pricereq] Прокси: {proxy}")
+
     with open(config_path, encoding="utf-8") as f:
         filters = json.load(f)
 

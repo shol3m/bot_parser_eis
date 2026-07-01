@@ -21,6 +21,15 @@ HEADERS = {
 
 NO_PROXY = {"http": None, "https": None}
 
+# Устанавливается в run() перед запросами; не thread-safe, но парсеры не запускаются параллельно
+_PROXIES: dict = NO_PROXY
+
+
+def _proxy_dict(proxy_url: str | None) -> dict:
+    if proxy_url:
+        return {"http": proxy_url, "https": proxy_url}
+    return NO_PROXY
+
 
 def _resolve_date(value: str | None) -> str | None:
     if not value:
@@ -121,7 +130,7 @@ def build_search_params(filters: dict, page: int = 1) -> dict:
 
 def _get(url: str, params: dict | None = None) -> requests.Response | None:
     try:
-        r = requests.get(url, params=params, headers=HEADERS, timeout=45, proxies=NO_PROXY)
+        r = requests.get(url, params=params, headers=HEADERS, timeout=45, proxies=_PROXIES)
         r.raise_for_status()
         return r
     except requests.RequestException as e:
@@ -327,14 +336,20 @@ def save_results(results: list[dict], filters: dict) -> Path:
 
 
 def run(config_path: str = "config/filters.json", max_pages: int = 0, download_docs: bool = False,
-        stop_event=None, progress_cb=None) -> list[dict]:
+        stop_event=None, progress_cb=None, proxy: str | None = None) -> list[dict]:
     """
     Основная функция.
     max_pages=0 — обходить все страницы автоматически.
     download_docs=True — скачивать документы к каждой закупке.
     stop_event — threading.Event; если установлен, парсер останавливается между страницами.
     progress_cb(found, page, total_pages) — вызывается после каждой страницы.
+    proxy — URL прокси, например "socks5://user:pass@host:1080" или None для прямого соединения.
     """
+    global _PROXIES
+    _PROXIES = _proxy_dict(proxy)
+    if proxy:
+        print(f"Прокси: {proxy}")
+
     with open(config_path, encoding="utf-8") as f:
         filters = json.load(f)
 

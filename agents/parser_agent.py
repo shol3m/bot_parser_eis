@@ -21,6 +21,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from parsers.zakupki import run as _parse
 
+_PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def _load_proxy() -> str | None:
+    """Читает прокси: ZAKUPKI_PROXY из env/.env → proxy из bot_config.json."""
+    import os
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_PROJECT_ROOT / ".env", override=False)
+    except ImportError:
+        pass
+    env_proxy = os.environ.get("ZAKUPKI_PROXY", "").strip()
+    if env_proxy:
+        return env_proxy
+    cfg_path = _PROJECT_ROOT / "config" / "bot_config.json"
+    try:
+        with open(cfg_path, encoding="utf-8") as f:
+            return json.load(f).get("proxy", "").strip() or None
+    except Exception:
+        return None
+
 
 def run(filters: dict, max_pages: int = 0, stop_event: threading.Event | None = None, progress_cb=None) -> list[dict]:
     """
@@ -44,12 +65,14 @@ def run(filters: dict, max_pages: int = 0, stop_event: threading.Event | None = 
     import tempfile
     import os
 
+    proxy = _load_proxy()
+
     if filters.get("law") == "both":
         combined, seen = [], set()
         for law_val in ("44", "223"):
             if stop_event and stop_event.is_set():
                 break
-            result = _run_single(dict(filters, law=law_val), max_pages, stop_event, progress_cb)
+            result = _run_single(dict(filters, law=law_val), max_pages, stop_event, progress_cb, proxy)
             for c in result:
                 key = c.get("number") or c.get("url", "")
                 if key not in seen:
@@ -58,10 +81,10 @@ def run(filters: dict, max_pages: int = 0, stop_event: threading.Event | None = 
                     combined.append(c)
         return combined
 
-    return _run_single(filters, max_pages, stop_event, progress_cb)
+    return _run_single(filters, max_pages, stop_event, progress_cb, proxy)
 
 
-def _run_single(filters: dict, max_pages: int, stop_event, progress_cb=None) -> list[dict]:
+def _run_single(filters: dict, max_pages: int, stop_event, progress_cb=None, proxy=None) -> list[dict]:
     import tempfile
     import os
 
@@ -69,7 +92,8 @@ def _run_single(filters: dict, max_pages: int, stop_event, progress_cb=None) -> 
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fp:
             json.dump(filters, fp, ensure_ascii=False)
-        results = _parse(config_path=tmp_path, max_pages=max_pages, stop_event=stop_event, progress_cb=progress_cb)
+        results = _parse(config_path=tmp_path, max_pages=max_pages, stop_event=stop_event,
+                         progress_cb=progress_cb, proxy=proxy)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
